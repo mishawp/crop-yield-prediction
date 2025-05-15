@@ -181,5 +181,10 @@ cython_debug/
 # draft
 draft.ipynb
 rabish/
+
+# data
 /data/**
 !/data/*.dvc
+
+# dvc pipelines
+*nbconvert.ipynb

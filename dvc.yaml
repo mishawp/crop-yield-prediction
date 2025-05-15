@@ -1,0 +1,13 @@
+stages:
+  integration:
+    cmd: python -m jupyter nbconvert --to notebook --execute src/data/integration.ipynb
+    deps:
+      - src/data/integration.ipynb
+      - data/raw
+    # не будет работать код ниже
+    # не хочу отслеживать data/interim и data/processed
+    # но если они в .dvcignore, то и dvc.yaml они использоваться не будут
+    # минусы: запускать с флажком -f после появления dvc.lock
+    # outs:
+    #   - data/interim:
+    #       cache: false

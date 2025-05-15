@@ -1,0 +1,14 @@
+schema: '2.0'
+stages:
+  integration:
+    cmd: python -m jupyter nbconvert --to notebook --execute src/data/integration.ipynb
+    deps:
+    - path: data/raw
+      hash: md5
+      md5: b5fda64a3bfe69ae5b11cd7e10c0a233.dir
+      size: 42080329288
+      nfiles: 196
+    - path: src/data/integration.ipynb
+      hash: md5
+      md5: d54d88682243c8e928330acc3c87f91d
+      size: 20408
