@@ -32,5 +32,5 @@ stages:
       nfiles: 0
     - path: src/data/process.ipynb
       hash: md5
-      md5: b00ec847cadd76ced27021285d1ef0da
-      size: 25663
+      md5: 4ec184931b842baf2e3bb744f196e7a2
+      size: 51059

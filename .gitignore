@@ -188,3 +188,5 @@ rabish/
 
 # dvc pipelines
 *nbconvert.ipynb
+
+catboost_info
