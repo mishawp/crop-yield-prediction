@@ -3,12 +3,22 @@ stages:
   integration:
     cmd: python -m jupyter nbconvert --to notebook --execute src/data/integration.ipynb
     deps:
-    - path: data/raw
+    - path: data/raw/ERA5-Land-Moisture
       hash: md5
-      md5: 208edc8ce18252248e10ff502b832072.dir
-      size: 62711179034
-      nfiles: 258
+      md5: 6a597d64041d58f89a0d3975819dc32c.dir
+      size: 115667113
+      nfiles: 12
+    - path: data/raw/USDA
+      hash: md5
+      md5: 9a433e91f99534f2ca574866bd549323.dir
+      size: 783402
+      nfiles: 6
+    - path: data/raw/WRF-HRRR
+      hash: md5
+      md5: 9e17772a0e0b51d511439d317bec19a5.dir
+      size: 1938431255
+      nfiles: 192
     - path: src/data/integration.ipynb
       hash: md5
-      md5: eb1c9a113e5d3d43e343f7500aa6d1df
-      size: 22567
+      md5: dc879a6dc1de1054a14f166a75b32058
+      size: 20669
