@@ -13,3 +13,10 @@ stages:
     # outs:
     #   - data/interim:
     #       cache: false
+
+  processing:
+    cmd: python -m jupyter nbconvert --to notebook --execute src/data/process.ipynb
+    deps:
+      - src/data/process.ipynb
+      # нужно, чтобы он существовал до dvc repro. Костыли, но пока так
+      - data/interim

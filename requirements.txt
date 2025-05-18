@@ -9,3 +9,4 @@ xarray==2025.4.0
 h5netcdf==1.6.1
 geopandas==1.0.1
 cdsapi==0.7.6
+scikit-learn==1.6.1

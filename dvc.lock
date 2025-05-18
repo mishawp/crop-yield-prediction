@@ -22,3 +22,15 @@ stages:
       hash: md5
       md5: dc879a6dc1de1054a14f166a75b32058
       size: 20669
+  processing:
+    cmd: python -m jupyter nbconvert --to notebook --execute src/data/process.ipynb
+    deps:
+    - path: data/interim
+      hash: md5
+      md5: d751713988987e9331980363e24189ce.dir
+      size: 0
+      nfiles: 0
+    - path: src/data/process.ipynb
+      hash: md5
+      md5: b00ec847cadd76ced27021285d1ef0da
+      size: 25663
