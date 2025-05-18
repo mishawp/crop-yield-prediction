@@ -5,10 +5,10 @@ stages:
     deps:
     - path: data/raw
       hash: md5
-      md5: b5fda64a3bfe69ae5b11cd7e10c0a233.dir
-      size: 42080329288
-      nfiles: 196
+      md5: 208edc8ce18252248e10ff502b832072.dir
+      size: 62711179034
+      nfiles: 258
     - path: src/data/integration.ipynb
       hash: md5
-      md5: d54d88682243c8e928330acc3c87f91d
-      size: 20408
+      md5: eb1c9a113e5d3d43e343f7500aa6d1df
+      size: 22567

@@ -1,14 +1,14 @@
+import calendar
 import cdsapi
+from pathlib import Path
+
+PATH_ERA5 = Path("/data/raw/ERA5-Land-Moisture")
+PATH_ERA5.mkdir(parents=True, exist_ok=True)  # Создаем директорию, если ее нет
 
 
-# download_swvl_except_feb и download_swvl_feb
-# скачивают файлы с одинаковыми названиями
-def download_swvl_except_feb():
-    """Скачивание данных о влажности почвы из
-    [ERA5-Land hourly data from 1950 to present]
-    (https://cds.climate.copernicus.eu/datasets/reanalysis-era5-land?).
-    Кроме февраля.
-    """
+def download_swvl():
+    """Скачивание данных о влажности почвы из ERA5-Land"""
+    client = cdsapi.Client()
     dataset = "reanalysis-era5-land"
     request = {
         "variable": [
@@ -17,9 +17,10 @@ def download_swvl_except_feb():
             "volumetric_soil_water_layer_2",
             "volumetric_soil_water_layer_3",
         ],
-        "year": ["2018", "2019", "2020", "2021"],
+        "year": ["2017", "2018", "2019", "2020", "2021", "2022"],
         "month": [
             "01",
+            "02",
             "03",
             "04",
             "05",
@@ -31,41 +32,19 @@ def download_swvl_except_feb():
             "11",
             "12",
         ],
-        "day": ["01", "15", "30"],
+        # "day": [str(day) for day in range(1, 32)], # слишком большой запрос, API не разрешает
+        # 1, 15 - числа съемок Sentinel, остальные для более точной оценки
+        "day": ["01", "08", "15", "23"],
         "time": ["11:00"],
         "data_format": "netcdf",
         "download_format": "unarchived",
-        # North, West, South, East
-        "area": [43.502, -96.640, 36.971, -87.496],
+        "area": [43.502, -96.640, 36.971, -87.496],  # North, West, South, East
     }
 
-    client = cdsapi.Client()
-    client.retrieve(dataset, request).download()
+    # Для месяцев с 31 днем
+    file_name = "2017-2022-IA-IL.nc"
+    client.retrieve(dataset, request).download(str(PATH_ERA5 / file_name))
 
 
-def download_swvl_feb():
-    """Скачивание данных о влажности почвы из
-    [ERA5-Land hourly data from 1950 to present]
-    (https://cds.climate.copernicus.eu/datasets/reanalysis-era5-land?).
-    Только февраль.
-    """
-    dataset = "reanalysis-era5-land"
-    request = {
-        "variable": [
-            "skin_reservoir_content",
-            "volumetric_soil_water_layer_1",
-            "volumetric_soil_water_layer_2",
-            "volumetric_soil_water_layer_3",
-        ],
-        "year": ["2018", "2019", "2020", "2021"],
-        "month": ["02"],
-        "day": ["01", "15", "28"],
-        "time": ["11:00"],
-        "data_format": "netcdf",
-        "download_format": "unarchived",
-        # North, West, South, East
-        "area": [43.502, -96.640, 36.971, -87.496],
-    }
-
-    client = cdsapi.Client()
-    client.retrieve(dataset, request).download()
+if __name__ == "__main__":
+    download_swvl()
