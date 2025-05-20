@@ -179,6 +179,7 @@ cython_debug/
 /resources/USA-map/
 
 # draft
+draft.py
 draft.ipynb
 rabish/
 

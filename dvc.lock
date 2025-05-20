@@ -10,5 +10,37 @@ stages:
       nfiles: 258
     - path: src/data/integration.ipynb
       hash: md5
-      md5: eb1c9a113e5d3d43e343f7500aa6d1df
-      size: 22567
+      md5: 0777ce6c689066cb80764f5dfe917df2
+      size: 20183
+  processing:
+    cmd: python -m jupyter nbconvert --to notebook --execute src/data/process.ipynb
+    deps:
+    - path: data/interim
+      hash: md5
+      md5: d751713988987e9331980363e24189ce.dir
+      size: 0
+      nfiles: 0
+    - path: src/data/process.ipynb
+      hash: md5
+      md5: 95369b4206a3d17168b7204d4d10ac5d
+      size: 97865
+  train:
+    cmd: python -m src.model.train
+    deps:
+    - path: data/processed
+      hash: md5
+      md5: d751713988987e9331980363e24189ce.dir
+      size: 0
+      nfiles: 0
+    - path: src/data/dataset.py
+      hash: md5
+      md5: e391996de65e356f307353487565c005
+      size: 1971
+    - path: src/model/gru.py
+      hash: md5
+      md5: 69d1ddebb461cbee2cab70441b36655d
+      size: 1766
+    - path: src/model/train.py
+      hash: md5
+      md5: a6295e6e9d39eceebae5f3d39c726cce
+      size: 5493
