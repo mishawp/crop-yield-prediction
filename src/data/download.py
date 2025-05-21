@@ -1,8 +1,7 @@
-import calendar
 import cdsapi
 from pathlib import Path
 
-PATH_ERA5 = Path("/data/raw/ERA5-Land-Moisture")
+PATH_ERA5 = Path("data/raw/ERA5-Land-Moisture")
 PATH_ERA5.mkdir(parents=True, exist_ok=True)  # Создаем директорию, если ее нет
 
 
@@ -33,16 +32,14 @@ def download_swvl():
             "12",
         ],
         # "day": [str(day) for day in range(1, 32)], # слишком большой запрос, API не разрешает
-        # 1, 15 - числа съемок Sentinel, остальные для более точной оценки
-        "day": ["01", "08", "15", "23"],
+        "day": ["01", "15"],
         "time": ["11:00"],
         "data_format": "netcdf",
         "download_format": "unarchived",
-        "area": [43.502, -96.640, 36.971, -87.496],  # North, West, South, East
+        "area": [43.502, -96.640, 35.994, -80.517],  # North, West, South, East
     }
 
-    # Для месяцев с 31 днем
-    file_name = "2017-2022-IA-IL.nc"
+    file_name = "2017-2022-IA-IL-IN-KY-MO-OH.nc"
     client.retrieve(dataset, request).download(str(PATH_ERA5 / file_name))
 
 

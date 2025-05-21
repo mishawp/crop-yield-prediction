@@ -1,17 +1,17 @@
 schema: '2.0'
 stages:
   integration:
-    cmd: python -m jupyter nbconvert --to notebook --execute src/data/integration.ipynb
+    cmd: python -m src.data.integration
     deps:
     - path: data/raw
       hash: md5
-      md5: 208edc8ce18252248e10ff502b832072.dir
-      size: 62711179034
-      nfiles: 258
-    - path: src/data/integration.ipynb
+      md5: b1b9c31e3e81fa59e28667dd3d8d42d3.dir
+      size: 67675224344
+      nfiles: 526
+    - path: src/data/integration.py
       hash: md5
-      md5: 0777ce6c689066cb80764f5dfe917df2
-      size: 20183
+      md5: b15a4580934aee456bea433f27abcdc4
+      size: 10154
   processing:
     cmd: python -m jupyter nbconvert --to notebook --execute src/data/process.ipynb
     deps:
@@ -22,8 +22,8 @@ stages:
       nfiles: 0
     - path: src/data/process.ipynb
       hash: md5
-      md5: 95369b4206a3d17168b7204d4d10ac5d
-      size: 97865
+      md5: d050ec90a6b172cd02ea396359eee3e3
+      size: 99080
   train:
     cmd: python -m src.model.train
     deps:
@@ -42,5 +42,5 @@ stages:
       size: 1766
     - path: src/model/train.py
       hash: md5
-      md5: a6295e6e9d39eceebae5f3d39c726cce
+      md5: 859d7bf85d005baba81ca9d0355c5d3f
       size: 5493

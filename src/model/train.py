@@ -111,7 +111,7 @@ def train_model(
         # Calculate validation metrics
         avg_val_loss = val_loss / len(val_loader)
         val_rmse = np.sqrt(
-            np.mean((np.array(val_preds)) - np.array(val_targets)) ** 2
+            np.mean((np.array(val_preds) - np.array(val_targets)) ** 2)
         )
 
         # Update history

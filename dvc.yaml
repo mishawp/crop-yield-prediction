@@ -1,8 +1,8 @@
 stages:
   integration:
-    cmd: python -m jupyter nbconvert --to notebook --execute src/data/integration.ipynb
+    cmd: python -m src.data.integration
     deps:
-      - src/data/integration.ipynb
+      - src/data/integration.py
       - data/raw
     # не будет работать код ниже
     # не хочу отслеживать data/interim и data/processed
