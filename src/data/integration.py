@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 
+# Константы
 PATH_DATA = Path("data/raw")
 PATH_INTERIM = Path("data/interim")
 PATH_SENTINEL = PATH_DATA / "Sentinel"
@@ -11,101 +12,95 @@ PATH_HRRR = PATH_DATA / "WRF-HRRR"
 PATH_ERA5 = PATH_DATA / "ERA5-Land-Moisture"
 PATH_USDA = PATH_DATA / "USDA"
 
-RENAME_COLS_HRRR = {
-    "Year": "year",
-    "Month": "month",
-    "Day": "day",
-    "FIPS Code": "fips",
-    "Lat (llcrnr)": "lat_lower_left",
-    "Lon (llcrnr)": "lon_lower_left",
-    "Lat (urcrnr)": "lat_upper_right",
-    "Lon (urcrnr)": "lon_upper_right",
-    "Avg Temperature (K)": "temperature_avg",
-    "Max Temperature (K)": "temperature_max",
-    "Min Temperature (K)": "temperature_min",
-    "Precipitation (kg m**-2)": "precipitation",
-    "Relative Humidity (%)": "humidity_relative",
-    "Wind Gust (m s**-1)": "wind_gust",
-    "Wind Speed (m s**-1)": "wind_speed",
-    "U Component of Wind (m s**-1)": "wind_u_component",
-    "V Component of Wind (m s**-1)": "wind_v_component",
-    "Downward Shortwave Radiation Flux (W m**-2)": "solar_radiation_downward",
-    "Vapor Pressure Deficit (kPa)": "vapor_pressure_deficit",
+# Словари для переименования столбцов
+COLUMN_RENAMING = {
+    "HRRR": {
+        "Year": "year",
+        "Month": "month",
+        "Day": "day",
+        "FIPS Code": "fips",
+        "Lat (llcrnr)": "lat_lower_left",
+        "Lon (llcrnr)": "lon_lower_left",
+        "Lat (urcrnr)": "lat_upper_right",
+        "Lon (urcrnr)": "lon_upper_right",
+        "Avg Temperature (K)": "temperature_avg",
+        "Max Temperature (K)": "temperature_max",
+        "Min Temperature (K)": "temperature_min",
+        "Precipitation (kg m**-2)": "precipitation",
+        "Relative Humidity (%)": "humidity_relative",
+        "Wind Gust (m s**-1)": "wind_gust",
+        "Wind Speed (m s**-1)": "wind_speed",
+        "U Component of Wind (m s**-1)": "wind_u_component",
+        "V Component of Wind (m s**-1)": "wind_v_component",
+        "Downward Shortwave Radiation Flux (W m**-2)": "solar_radiation_downward",
+        "Vapor Pressure Deficit (kPa)": "vapor_pressure_deficit",
+    },
+    "ERA5": {
+        "src": "skin_reservoir_content",
+        "swvl1": "soil_water_vol_layer1",
+        "swvl2": "soil_water_vol_layer2",
+        "swvl3": "soil_water_vol_layer3",
+    },
+    "USDA": {
+        "year": "year",
+        "fips": "fips",
+        "YIELD, MEASURED IN BU / ACRE": "yield_bu_per_acre",
+    },
 }
 
-RENAME_COLS_ERA5 = {
-    "src": "skin_reservoir_content",
-    "swvl1": "soil_water_vol_layer1",
-    "swvl2": "soil_water_vol_layer2",
-    "swvl3": "soil_water_vol_layer3",
-}
-
-RENAME_COLS_USDA = {
-    "year": "year",
-    "fips": "fips",
-    "YIELD, MEASURED IN BU / ACRE": "yield_bu_per_acre",
-}
+# Целевые штаты и культуры для анализа
+TARGET_STATES = ["IOWA", "ILLINOIS", "INDIANA", "KENTUCKY", "MISSOURI", "OHIO"]
+TARGET_CROPS = ["CORN"]
 
 
-def get_all_files(path: Path) -> list[Path]:
-    """Возвращает все пути к файлам данных из подкаталогов
-
-    Args:
-        path (Path): путь к каталогу данных
-
-    Returns:
-        list[Path]: список путей к файлам
+def integrate_datasets() -> None:
     """
-    return [
-        file
-        for dir_ in path.iterdir()
-        for subdir in dir_.iterdir()
-        for file in subdir.iterdir()
-    ]
-
-
-def read_csv_files(files: list[Path]) -> pd.DataFrame:
-    """Читает файлы .csv одной структуры из списка файлов files
-    и возвращает их как pd.DataFrame
-
-    Args:
-        files (list[Path]): список файлов
-
-    Returns:
-        pd.DataFrame: DataFrame
+    Основная функция для интеграции всех наборов данных.
+    Выполняет загрузку, обработку и сохранение данных.
     """
-    return pd.concat(
-        [pd.read_csv(file) for file in files], axis=0, ignore_index=True
+    # Загрузка и подготовка данных
+    hrrr_files = get_all_data_files(PATH_HRRR)
+    era5_files = get_all_data_files(PATH_ERA5)
+    usda_files = get_all_data_files(PATH_USDA)
+
+    hrrr_df = prepare_hrrr_data(hrrr_files)
+    era5_df = prepare_era5_data(era5_files)
+    usda_df = prepare_usda_data(usda_files, TARGET_STATES, TARGET_CROPS)
+
+    # Объединение признаков
+    X = pd.merge(
+        hrrr_df, era5_df, how="inner", on=["year", "month", "day", "fips"]
     )
+    y = usda_df
+
+    # Очистка памяти
+    del hrrr_df, era5_df
+    gc.collect()
+
+    # Добавление путей к изображениям и сортировка
+    X["images"] = generate_image_paths(X)
+    X.sort_values(["year", "fips", "month", "day"], inplace=True)
+    y.sort_values(["year", "fips"], inplace=True)
+
+    # Сохранение данных
+    save_data(X, y)
+    print("Интеграция данных успешно завершена")
 
 
-def get_fips(df_usda: pd.DataFrame) -> pd.Series:
-    """Получает fips используя поля state_ansi и county_ansi
+def prepare_hrrr_data(file_paths: list[Path]) -> pd.DataFrame:
+    """
+    Подготавливает данные WRF-HRRR для интеграции.
 
     Args:
-        df_usda (pd.DataFrame): USDA dataset
+        file_paths (list[Path]): Список путей к файлам с данными WRF-HRRR
 
     Returns:
-        pd.Series: fips codes
+        pd.DataFrame: Обработанный DataFrame с данными WRF-HRRR
     """
-    states_fips = df_usda["state_ansi"].astype(str).str.zfill(2)
-    counties_fips = df_usda["county_ansi"].astype(str).str.zfill(3)
-    fips = states_fips + counties_fips
-    return fips
-
-
-def prepare_wrf_hrrr(paths: list[Path]) -> pd.DataFrame:
-    """Подготавливает данные data/raw/WRF-HRRR для дальнейшей конкатенации
-
-    Args:
-        paths (list[Path]): пути к файлам .csv
-
-    Returns:
-        pd.DataFrame: подготовленный dataframe
-    """
-    agg_dict = {
-        column: "mean"
-        for column in [
+    # Словарь для агрегации данных
+    aggregation = {
+        col: "mean"
+        for col in [
             "Lat (llcrnr)",
             "Lon (llcrnr)",
             "Lat (urcrnr)",
@@ -123,171 +118,198 @@ def prepare_wrf_hrrr(paths: list[Path]) -> pd.DataFrame:
             "Vapor Pressure Deficit (kPa)",
         ]
     }
-    agg_dict["Lat (llcrnr)"] = "min"
-    agg_dict["Lon (llcrnr)"] = "min"
-    agg_dict["Lat (urcrnr)"] = "max"
-    agg_dict["Lon (urcrnr)"] = "max"
-
-    dfs_list = [None] * len(paths)
-    for i, path in enumerate(paths):
-        df = pd.read_csv(path)
-        df = df[(df["Day"] == 1) | (df["Day"] == 15)]
-
-        # see ../../notebooks/1.3-data-review-wrf-hrrr.ipynb
-        df.dropna(axis=0, inplace=True)
-        df.drop(
-            [
-                "State",
-                "County",
-                "Grid Index",
-                "Daily/Monthly",
-            ],
-            axis=1,
-            inplace=True,
-        )
-
-        df = (
-            df.groupby(["Year", "FIPS Code", "Month", "Day"])
-            .agg(agg_dict)
-            .reset_index()
-        )
-
-        dfs_list[i] = df
-
-    df_full = pd.concat(dfs_list, ignore_index=True)
-    df_full.rename(RENAME_COLS_HRRR, inplace=True, axis=1)
-    df_full[["year", "fips", "month", "day"]] = df_full[
-        ["year", "fips", "month", "day"]
-    ].astype(np.int32)
-    return df_full
-
-
-def prepare_era5(paths: list[Path]) -> pd.DataFrame:
-    """Подготавливает данные data/raw/ERA5-Land-Moisture для дальнейшей конкатенации
-
-    Args:
-        paths (list[Path]): пути к файлам .csv
-
-    Returns:
-        pd.DataFrame: подготовленный dataframe
-    """
-    dfs_list = [None] * len(paths)
-    for i, path in enumerate(paths):
-        df = pd.read_csv(path)
-        df = df[(df["day"] == 1) | (df["day"] == 15)]
-
-        df.dropna(axis=0, inplace=True)
-        df.drop(
-            ["hour", "state", "latitude", "longitude"], axis=1, inplace=True
-        )
-
-        df = df.groupby(["fips", "year", "month", "day"]).mean().reset_index()
-
-        dfs_list[i] = df
-
-    df_full = pd.concat(dfs_list, ignore_index=True)
-
-    df_full.rename(RENAME_COLS_ERA5, inplace=True, axis=1)
-
-    df_full[["year", "fips", "month", "day"]] = df_full[
-        ["year", "fips", "month", "day"]
-    ].astype(np.int32)
-
-    return df_full
-
-
-def prepare_usda(
-    paths: list[Path], states: list[str], commandity_desc: list[str]
-) -> pd.DataFrame:
-    """Подготавливает данные data/raw/USDA. Таргетная переменная
-    Args:
-        paths (list[Path]): пути к файлам .csv
-        states (list[str]): штаты (полные имена заглавными буквами), для которых нужны данные
-        commandity_desc (list[str]): культуры (заглавными буквами), для которых нужны данные. Доступны `CORN`
-
-    Returns:
-        pd.DataFrame: подготовленный dataframe
-    """
-    df = read_csv_files(paths)
-
-    df["fips"] = get_fips(df).astype(np.int32)
-
-    df = df[
-        (df["state_name"].isin([state.upper() for state in states]))
-        & (df["commodity_desc"].isin(commandity_desc))
-    ]
-
-    df.drop(
-        [
-            "reference_period_desc",
-            "state_ansi",
-            "state_name",
-            "county_ansi",
-            "county_name",
-            "asd_code",
-            "asd_desc",
-            "domain_desc",
-            "source_desc",
-            "agg_level_desc",
-            "PRODUCTION, MEASURED IN BU",
-        ],
-        axis=1,
-        inplace=True,
+    aggregation.update(
+        {
+            "Lat (llcrnr)": "min",
+            "Lon (llcrnr)": "min",
+            "Lat (urcrnr)": "max",
+            "Lon (urcrnr)": "max",
+        }
     )
 
-    if len(commandity_desc) == 1:
-        df.drop(
-            "commodity_desc",
-            axis=1,
-            inplace=True,
+    # Колонки для удаления
+    columns_to_drop = ["State", "County", "Grid Index", "Daily/Monthly"]
+
+    dfs = []
+    for path in file_paths:
+        df = pd.read_csv(path)
+        df = (
+            df[(df["Day"].isin([1, 15]))]
+            .dropna()
+            .drop(columns=columns_to_drop)
         )
 
+        grouped = (
+            df.groupby(["Year", "FIPS Code", "Month", "Day"])
+            .agg(aggregation)
+            .reset_index()
+        )
+        dfs.append(grouped)
+
+    result = pd.concat(dfs, ignore_index=True)
+    result.rename(columns=COLUMN_RENAMING["HRRR"], inplace=True)
+    result[["year", "fips", "month", "day"]] = result[
+        ["year", "fips", "month", "day"]
+    ].astype(np.int32)
+    return result
+
+
+def prepare_era5_data(file_paths: list[Path]) -> pd.DataFrame:
+    """
+    Подготавливает данные ERA5-Land для интеграции.
+
+    Args:
+        file_paths (list[Path]): Список путей к файлам с данными ERA5-Land
+
+    Returns:
+        pd.DataFrame: Обработанный DataFrame с данными ERA5-Land
+    """
+    columns_to_drop = ["hour", "state", "latitude", "longitude"]
+
+    dfs = []
+    for path in file_paths:
+        df = pd.read_csv(path)
+        df = df[df["day"].isin([1, 15])].dropna().drop(columns=columns_to_drop)
+        grouped = (
+            df.groupby(["fips", "year", "month", "day"]).mean().reset_index()
+        )
+        dfs.append(grouped)
+
+    result = pd.concat(dfs, ignore_index=True)
+    result.rename(columns=COLUMN_RENAMING["ERA5"], inplace=True)
+    result[["year", "fips", "month", "day"]] = result[
+        ["year", "fips", "month", "day"]
+    ].astype(np.int32)
+    return result
+
+
+def prepare_usda_data(
+    file_paths: list[Path], states: list[str], crops: list[str]
+) -> pd.DataFrame:
+    """
+    Подготавливает данные USDA (таргетная переменная).
+
+    Args:
+        file_paths (list[Path]): Список путей к файлам с данными USDA
+        states (list[str]): Список штатов для фильтрации
+        crops (list[str]): Список культур для фильтрации
+
+    Returns:
+        pd.DataFrame: Обработанный DataFrame с данными USDA
+    """
+    df = read_multiple_csvs(file_paths)
+    df["fips"] = create_fips_code(df)
+
+    df = df[
+        (df["state_name"].isin(states)) & (df["commodity_desc"].isin(crops))
+    ]
+
+    columns_to_drop = [
+        "reference_period_desc",
+        "state_ansi",
+        "state_name",
+        "county_ansi",
+        "county_name",
+        "asd_code",
+        "asd_desc",
+        "domain_desc",
+        "source_desc",
+        "agg_level_desc",
+        "PRODUCTION, MEASURED IN BU",
+    ]
+
+    if len(crops) == 1:
+        columns_to_drop.append("commodity_desc")
+
+    df = df.drop(columns=columns_to_drop)
     df["year"] = df["year"].astype(np.int32)
-    df.rename(RENAME_COLS_USDA, inplace=True, axis=1)
+    df.rename(columns=COLUMN_RENAMING["USDA"], inplace=True)
     return df
 
 
-def prepare_sentinel(paths: list[Path], X: pd.DataFrame) -> pd.Series:
-    """Подготавливает данные data/raw/Sentinel.
-    - Снимки не обрабатываются, если для них нет данных из X.
-    - Из X удаляются те данные, для которых нет снимков
-
-    Args:
-        paths (list[Path]): пути к файлам .h5
-        X (pd.DataFrame): dataset, содержащий столбец `images` с путями к снимкам
-
-    Returns:
-
+def prepare_sentinel_images(file_paths: list[Path], X: pd.DataFrame) -> None:
     """
-    path_images = PATH_INTERIM / "images"
-    if not path_images.exists():
-        path_images.mkdir(parents=True)
-
-    for file in paths:
-        with h5py.File(file, "r") as h5:
-            for fips, attrs0 in h5.items():
-                for date, attrs1 in attrs0.items():
-                    dir_name = f"{fips}-{date}"
-                    if "images/" + dir_name not in X["images"].values:
-                        continue
-
-                    new_dir = path_images / dir_name
-                    if new_dir.exists():
-                        continue
-
-                    new_dir.mkdir()
-                    for i, image in enumerate(attrs1["X"][:]):
-                        np.save(new_dir / f"{i}.npy", image)
-
-
-def make_images_paths(df: pd.DataFrame) -> pd.Series:
-    """Создает относительные пути к изображениям формата `images/<fips>-<year>-<month>-<day>
+    Обрабатывает изображения Sentinel и сохраняет их в требуемом формате.
 
     Args:
-        df (pd.DataFrame): Dataframe, содержащий столбцы `fips`, `year`, `month` и `day`
+        file_paths (list[Path]): Список путей к файлам с изображениями
+        X (pd.DataFrame): DataFrame колонкой 'images'
+    """
+    images_dir = PATH_INTERIM / "images"
+    images_dir.mkdir(parents=True, exist_ok=True)
+
+    for file in file_paths:
+        with h5py.File(file, "r") as h5:
+            for fips, dates in h5.items():
+                for date, images in dates.items():
+                    dir_name = f"{fips}-{date}"
+                    if f"images/{dir_name}" not in X["images"].values:
+                        continue
+
+                    output_dir = images_dir / dir_name
+                    if output_dir.exists():
+                        continue
+
+                    output_dir.mkdir()
+                    for i, img in enumerate(images["X"][:]):
+                        np.save(output_dir / f"{i}.npy", img)
+
+
+def get_all_data_files(directory: Path) -> list[Path]:
+    """
+    Получает все файлы данных из подкаталогов указанной директории.
+
+    Args:
+        directory (Path): Путь к директории с данными
 
     Returns:
-        pd.Series: пути к изображениям
+        list[Path]: Список путей к файлам данных
+    """
+    return [
+        f
+        for d in directory.iterdir()
+        for sd in d.iterdir()
+        for f in sd.iterdir()
+    ]
+
+
+def read_multiple_csvs(files: list[Path]) -> pd.DataFrame:
+    """
+    Читает несколько CSV-файлов с одинаковой структурой в один DataFrame.
+
+    Args:
+        files (list[Path]): Список путей к CSV-файлам
+
+    Returns:
+        pd.DataFrame: Объединенный DataFrame
+    """
+    return pd.concat([pd.read_csv(f) for f in files], ignore_index=True)
+
+
+def create_fips_code(df: pd.DataFrame) -> pd.Series:
+    """
+    Создает FIPS-код из кодов штата и округа.
+
+    Args:
+        df (pd.DataFrame): DataFrame с колонками state_ansi и county_ansi
+
+    Returns:
+        pd.Series: Серия с FIPS-кодами
+    """
+    state_code = df["state_ansi"].astype(str).str.zfill(2)
+    county_code = df["county_ansi"].astype(str).str.zfill(3)
+    return (state_code + county_code).astype(np.int32)
+
+
+def generate_image_paths(df: pd.DataFrame) -> pd.Series:
+    """
+    Генерирует относительные пути к изображениям в формате 'images/<fips>-<year>-<month>-<day>'.
+
+    Args:
+        df (pd.DataFrame): DataFrame с колонками fips, year, month, day
+
+    Returns:
+        pd.Series: Серия с путями к изображениям
     """
     return (
         "images/"
@@ -301,41 +323,17 @@ def make_images_paths(df: pd.DataFrame) -> pd.Series:
     )
 
 
-def save(X: pd.DataFrame, y: pd.DataFrame | pd.Series):
+def save_data(X: pd.DataFrame, y: pd.DataFrame | pd.Series) -> None:
+    """
+    Сохраняет обработанные данные в CSV-файлы.
+
+    Args:
+        X (pd.DataFrame): DataFrame с признаками
+        y (pd.DataFrame | pd.Series): Целевая переменная
+    """
     X.to_csv(PATH_INTERIM / "X.csv", index=False)
     y.to_csv(PATH_INTERIM / "y.csv", index=False)
 
 
-def integrate() -> None:
-    files_hrrr = get_all_files(PATH_HRRR)
-    files_era5 = get_all_files(PATH_ERA5)
-    files_usda = get_all_files(PATH_USDA)
-
-    df_hrrr = prepare_wrf_hrrr(files_hrrr)
-    df_era5 = prepare_era5(files_era5)
-    df_usda = prepare_usda(
-        files_usda,
-        ["IOWA", "ILLINOIS", "INDIANA", "KENTUCKY", "MISSOURI", "OHIO"],
-        ["CORN"],
-    )
-
-    X = pd.merge(
-        df_hrrr, df_era5, how="inner", on=["year", "month", "day", "fips"]
-    )
-    y = df_usda
-
-    del df_hrrr, df_era5
-    gc.collect()
-
-    X["images"] = make_images_paths(X)
-
-    X.sort_values(by=["year", "fips", "month", "day"], inplace=True)
-    y.sort_values(by=["year", "fips"], inplace=True)
-
-    save(X, y)
-
-    print("Integration completed")
-
-
 if __name__ == "__main__":
-    integrate()
+    integrate_datasets()

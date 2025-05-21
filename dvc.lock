@@ -10,10 +10,10 @@ stages:
       nfiles: 526
     - path: src/data/integration.py
       hash: md5
-      md5: b15a4580934aee456bea433f27abcdc4
-      size: 10154
+      md5: bcc84625bc622401e3c1b709bdee2fb5
+      size: 10967
   processing:
-    cmd: python -m jupyter nbconvert --to notebook --execute src/data/process.ipynb
+    cmd: python -m src.data.process
     deps:
     - path: data/interim
       hash: md5
