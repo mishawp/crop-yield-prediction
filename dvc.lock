@@ -20,10 +20,10 @@ stages:
       md5: d751713988987e9331980363e24189ce.dir
       size: 0
       nfiles: 0
-    - path: src/data/process.ipynb
+    - path: src/data/process.py
       hash: md5
-      md5: d050ec90a6b172cd02ea396359eee3e3
-      size: 99080
+      md5: 67181472ed9fe7941abcac69083bf8a7
+      size: 10420
   train:
     cmd: python -m src.model.train
     deps:
@@ -36,11 +36,11 @@ stages:
       hash: md5
       md5: e391996de65e356f307353487565c005
       size: 1971
-    - path: src/model/gru.py
+    - path: src/model/rnn.py
       hash: md5
-      md5: 69d1ddebb461cbee2cab70441b36655d
-      size: 1766
+      md5: 6981562958daea99af84ad776a1564ef
+      size: 2273
     - path: src/model/train.py
       hash: md5
-      md5: 859d7bf85d005baba81ca9d0355c5d3f
-      size: 5493
+      md5: 805968a9f54b465405457eb5df60584b
+      size: 5795

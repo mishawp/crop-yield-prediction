@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from src.model.gru import GRURegressor
+from src.model.rnn import RNNRegressor
 from src.data.dataset import Data
 from torch import nn
 from torch.utils.data import Dataset, DataLoader
@@ -146,6 +146,17 @@ def train_model(
 
 
 if __name__ == "__main__":
+    seed = 42
+
+    # PyTorch
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+    # NumPy
+    np.random.seed(seed)
+
     PATH_PROCESSED = Path("data/processed")
     train_dataset = Data(
         PATH_PROCESSED / "X_train.csv", PATH_PROCESSED / "y_train.csv"
@@ -157,7 +168,9 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Создаем модель
-    model = GRURegressor(
+    rnn_type = "GRU"
+    model = RNNRegressor(
+        rnn_type=rnn_type,
         input_size=train_dataset.X.shape[2],  # Количество фичей
         hidden_size=200,
         num_layers=2,
@@ -165,12 +178,13 @@ if __name__ == "__main__":
         device=device,
     )
 
+    print(f"RNN Type: {rnn_type}")
     # Обучаем модель
     trained_model, history = train_model(
         model=model,
         train_dataset=train_dataset,
         val_dataset=test_dataset,
-        batch_size=32,
+        batch_size=128,
         num_epochs=500,
         learning_rate=0.001,
         patience=10,

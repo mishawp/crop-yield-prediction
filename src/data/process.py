@@ -1,6 +1,9 @@
 import numpy as np
 import pandas as pd
+import joblib
 from pathlib import Path
+from sklearn.base import TransformerMixin
+from sklearn.preprocessing import MinMaxScaler
 
 PATH_INTERIM = Path("data/interim")
 PATH_PROCESSED = Path("data/processed")
@@ -42,10 +45,21 @@ def process() -> None:
     # 8. Удаление сентября-октября
     data = data[~data["month"].isin([9, 10])]
 
-    # 9. Разделение на train/test
+    # 9. Добавление средних значений таргета за предыдущий год
+    data["mean_prev_year_target"] = get_prev_target_mean(data, y)
+
+    # 10. Разделение на train/test
     X_train, X_test, y_train, y_test = split_train_test(data)
 
-    # 10. Проверка и сохранение данных
+    # 11. Нормализация данных
+    features_to_scale = X_train.select_dtypes(
+        include=[np.float32, np.float64]
+    ).columns.tolist()
+    X_train, X_test, scaler = scale_features(
+        X_train, X_test, features_to_scale, scaler=MinMaxScaler()
+    )
+
+    # 112. Проверка и сохранение данных
     validate_and_save(X_train, X_test, y_train, y_test)
 
 
@@ -138,6 +152,22 @@ def handle_missing_values(data: pd.DataFrame) -> pd.DataFrame:
     return data
 
 
+def get_prev_target_mean(X: pd.DataFrame, y: pd.DataFrame) -> pd.DataFrame:
+    """
+    Среднее значение таргета за предыдущий год в признаки
+
+    Args:
+        X (pd.DataFrame): DataFrame с признаками
+        y (pd.DataFrame): DataFrame с таргетами
+
+    Returns:
+        pd.Series: Серия с средними значениями таргета за предыдущий год
+    """
+    y_year_mean = y.drop("fips", axis=1).groupby("year").mean().squeeze()
+    y_year_mean.index = y_year_mean.index.astype(X["year"].dtype)
+    return X["year"].apply(lambda x: y_year_mean[x - 1])
+
+
 def split_train_test(
     data: pd.DataFrame,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
@@ -160,14 +190,44 @@ def split_train_test(
     X_test = data_test.drop("yield_bu_per_acre", axis=1)
     y_test = data_test["yield_bu_per_acre"]
 
-    # Упорядочивание столбцов
-    columns_order = ["year", "fips", "month", "day"] + sorted(
-        X_train.columns.drop(["year", "fips", "month", "day"])
-    )
-    X_train = X_train[columns_order]
-    X_test = X_test[columns_order]
-
     return X_train, X_test, y_train, y_test
+
+
+def scale_features(
+    X_train: pd.DataFrame,
+    X_test: pd.DataFrame,
+    features_to_scale: list[str],
+    scaler: TransformerMixin = MinMaxScaler(),
+) -> tuple[pd.DataFrame, pd.DataFrame, TransformerMixin]:
+    """
+    Масштабирует указанные признаки в обучающих и тестовых данных с помощью MinMaxScaler.
+
+    Args:
+        X_train (pd.DataFrame): Обучающий набор данных
+        X_test (pd.DataFrame): Тестовый набор данных
+        features_to_scale (list[str]): Список названий признаков, которые нужно масштабировать
+        scaler : объект scaler, по умолчанию MinMaxScaler() Объект scaler с методами fit/transform (например, StandardScaler)
+
+    Returns:
+        tuple[DataFrame, DataFrame]: Кортеж с масштабированными версиями X_train и X_test
+
+    """
+    # Создаем копии данных чтобы избежать предупреждений
+    X_train = X_train.copy()
+    X_test = X_test.copy()
+
+    # Масштабируем только указанные признаки
+    scaler.fit(X_train[features_to_scale])
+
+    # Применяем масштабирование
+    X_train_scaled = scaler.transform(X_train[features_to_scale])
+    X_test_scaled = scaler.transform(X_test[features_to_scale])
+
+    # Обновляем масштабированные признаки
+    X_train[features_to_scale] = X_train_scaled
+    X_test[features_to_scale] = X_test_scaled
+
+    return X_train, X_test, scaler
 
 
 def validate_and_save(
@@ -175,6 +235,7 @@ def validate_and_save(
     X_test: pd.DataFrame,
     y_train: pd.Series,
     y_test: pd.Series,
+    **kwargs,
 ) -> None:
     """
     Проверка и сохранение данных.
@@ -184,7 +245,14 @@ def validate_and_save(
         X_test (pd.DataFrame): Признаки для тестирования
         y_train (pd.Series): Целевая переменная для обучения
         y_test (pd.Series): Целевая переменная для тестирования
+        **kwargs: параметры, которые нужно сохранить через joblib (напр., MinMaxScaler())
     """
+    # Упорядочивание столбцов
+    columns_order = ["year", "fips", "month", "day"] + sorted(
+        X_train.columns.drop(["year", "fips", "month", "day"])
+    )
+    X_train = X_train[columns_order]
+    X_test = X_test[columns_order]
 
     # Проверка целостности данных
     def check_data_integrity(data: pd.DataFrame) -> None:
@@ -205,6 +273,8 @@ def validate_and_save(
     y_train.to_csv(PATH_PROCESSED / "y_train.csv", index=False)
     X_test.to_csv(PATH_PROCESSED / "X_test.csv", index=False)
     y_test.to_csv(PATH_PROCESSED / "y_test.csv", index=False)
+    for key, value in kwargs:
+        joblib.dump(value, PATH_PROCESSED / f"{key}.pkl")
 
     # Дополнительная статистика
     X_train_size = X_train[["year", "fips"]].drop_duplicates().shape[0]

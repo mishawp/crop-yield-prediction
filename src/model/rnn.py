@@ -1,10 +1,14 @@
 import torch
 from torch import nn
+from typing import Literal
 
 
-class GRURegressor(nn.Module):
+class RNNRegressor(nn.Module):
+    rnn_types = {"RNN": nn.RNN, "LSTM": nn.LSTM, "GRU": nn.GRU}
+
     def __init__(
         self,
+        rnn_type: Literal["RNN", "LSTM", "GRU"],
         input_size: int,
         hidden_size: int = 200,
         num_layers: int = 2,
@@ -20,14 +24,15 @@ class GRURegressor(nn.Module):
             dropout (float): Dropout probability
             device (str): Device to run on ('cuda' or 'cpu')
         """
-        super(GRURegressor, self).__init__()
+        super(RNNRegressor, self).__init__()
+        self.rnn_type = rnn_type
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.dropout = dropout
         self.device = device
 
-        self.gru = nn.GRU(
+        self.rnn = RNNRegressor.rnn_types[rnn_type](
             input_size,
             hidden_size,
             num_layers,
@@ -55,13 +60,21 @@ class GRURegressor(nn.Module):
             self.hidden_size,
         ).to(self.device)
 
-        # GRU output
-        out_gru, _ = self.gru(X, h_0)
+        # For LSTM, we need to initialize both hidden and cell states
+        if self.rnn_type == "LSTM":
+            c_0 = torch.zeros(
+                self.num_layers,
+                X.size(0),
+                self.hidden_size,
+            ).to(self.device)
+            out_rnn, _ = self.rnn(X, (h_0, c_0))
+        else:
+            out_rnn, _ = self.rnn(X, h_0)
 
         # Take the last timestep output
-        out_gru = out_gru[:, -1, :]
+        out_rnn = out_rnn[:, -1, :]
 
         # Final regression output
-        out_fc = self.fc(out_gru)
+        out_fc = self.fc(out_rnn)
 
         return out_fc

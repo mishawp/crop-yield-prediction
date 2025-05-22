@@ -15,7 +15,7 @@ stages:
   processing:
     cmd: python -m src.data.process
     deps:
-      - src/data/process.ipynb
+      - src/data/process.py
       # нужно, чтобы он существовал до dvc repro. Костыли, но пока так
       - data/interim
 
@@ -23,6 +23,6 @@ stages:
     cmd: python -m src.model.train
     deps:
       - src/data/dataset.py
-      - src/model/gru.py
+      - src/model/rnn.py
       - src/model/train.py
       - data/processed
