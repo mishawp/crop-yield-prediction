@@ -49,7 +49,8 @@ COLUMN_RENAMING = {
 }
 
 # Целевые штаты и культуры для анализа
-TARGET_STATES = ["IOWA", "ILLINOIS", "INDIANA", "KENTUCKY", "MISSOURI", "OHIO"]
+TARGET_STATES = ["IOWA", "ILLINOIS"]
+TARGET_STATES_SHORT = ["IA", "IL"]
 TARGET_CROPS = ["CORN"]
 
 
@@ -59,13 +60,22 @@ def integrate_datasets() -> None:
     Выполняет загрузку, обработку и сохранение данных.
     """
     # Загрузка и подготовка данных
-    hrrr_files = get_all_data_files(PATH_HRRR)
-    era5_files = get_all_data_files(PATH_ERA5)
-    usda_files = get_all_data_files(PATH_USDA)
+    sentinel_files = get_data_files(
+        PATH_SENTINEL, states=TARGET_STATES_SHORT, crops=None
+    )
+    hrrr_files = get_data_files(
+        PATH_HRRR, states=TARGET_STATES_SHORT, crops=None
+    )
+    era5_files = get_data_files(
+        PATH_ERA5, states=TARGET_STATES_SHORT, crops=None
+    )
+    usda_files = get_data_files(
+        PATH_USDA, crops=[crop.lower() for crop in TARGET_CROPS], states=None
+    )
 
-    hrrr_df = prepare_hrrr_data(hrrr_files)
-    era5_df = prepare_era5_data(era5_files)
-    usda_df = prepare_usda_data(usda_files, TARGET_STATES, TARGET_CROPS)
+    hrrr_df = prepare_hrrr(hrrr_files)
+    era5_df = prepare_era5(era5_files)
+    usda_df = prepare_usda(usda_files, TARGET_STATES, TARGET_CROPS)
 
     # Объединение признаков
     X = pd.merge(
@@ -77,8 +87,14 @@ def integrate_datasets() -> None:
     del hrrr_df, era5_df
     gc.collect()
 
+    # Интеграция изображений
     # Добавление путей к изображениям и сортировка
     X["images"] = generate_image_paths(X)
+    # сохранение изображений в data/interim/images
+    paths_images = prepare_and_save_sentinel(sentinel_files, X)
+    # удаляем данные, для которых нет изображений
+    X = clean_data_by_images(X, paths_images)
+
     X.sort_values(["year", "fips", "month", "day"], inplace=True)
     y.sort_values(["year", "fips"], inplace=True)
 
@@ -87,7 +103,7 @@ def integrate_datasets() -> None:
     print("Интеграция данных успешно завершена")
 
 
-def prepare_hrrr_data(file_paths: list[Path]) -> pd.DataFrame:
+def prepare_hrrr(file_paths: list[Path]) -> pd.DataFrame:
     """
     Подготавливает данные WRF-HRRR для интеграции.
 
@@ -154,7 +170,7 @@ def prepare_hrrr_data(file_paths: list[Path]) -> pd.DataFrame:
     return result
 
 
-def prepare_era5_data(file_paths: list[Path]) -> pd.DataFrame:
+def prepare_era5(file_paths: list[Path]) -> pd.DataFrame:
     """
     Подготавливает данные ERA5-Land для интеграции.
 
@@ -183,7 +199,7 @@ def prepare_era5_data(file_paths: list[Path]) -> pd.DataFrame:
     return result
 
 
-def prepare_usda_data(
+def prepare_usda(
     file_paths: list[Path], states: list[str], crops: list[str]
 ) -> pd.DataFrame:
     """
@@ -227,50 +243,76 @@ def prepare_usda_data(
     return df
 
 
-def prepare_sentinel_images(file_paths: list[Path], X: pd.DataFrame) -> None:
+def prepare_and_save_sentinel(
+    file_paths: list[Path], X: pd.DataFrame
+) -> list[str]:
     """
     Обрабатывает изображения Sentinel и сохраняет их в требуемом формате.
 
     Args:
         file_paths (list[Path]): Список путей к файлам с изображениями
         X (pd.DataFrame): DataFrame колонкой 'images'
+
+    Returns:
+        list[str]: Список из относительных путей к файлам изображений
     """
     images_dir = PATH_INTERIM / "images"
     images_dir.mkdir(parents=True, exist_ok=True)
-
+    images_paths = []
     for file in file_paths:
         with h5py.File(file, "r") as h5:
             for fips, dates in h5.items():
                 for date, images in dates.items():
-                    dir_name = f"{fips}-{date}"
-                    if f"images/{dir_name}" not in X["images"].values:
+                    file_name = f"{fips}-{date}.npy"
+                    if f"images/{file_name}" not in X["images"].values:
                         continue
 
-                    output_dir = images_dir / dir_name
-                    if output_dir.exists():
+                    output_file = images_dir / file_name
+                    images_paths.append(f"images/{file_name}")
+                    if output_file.exists():
                         continue
 
-                    output_dir.mkdir()
-                    for i, img in enumerate(images["X"][:]):
-                        np.save(output_dir / f"{i}.npy", img)
+                    # (X, 224, 224, 3) - X -кол
+                    np.save(output_file, images["data"][:])
+    return images_paths
 
 
-def get_all_data_files(directory: Path) -> list[Path]:
+def clean_data_by_images(data: pd.DataFrame, paths_images: pd.Series):
+    out = data[data["images"].isin(paths_images)]
+    mask = out.groupby(["year", "fips"])["day"].transform("count") == 24
+    images_for_del = out.loc[~mask, "images"]
+    for path in images_for_del:
+        (PATH_INTERIM / path).unlink()
+    out = out[mask]
+    return out
+
+
+def get_data_files(
+    directory: Path, states: list[str] | None, crops: list[str] | None
+) -> list[Path]:
     """
     Получает все файлы данных из подкаталогов указанной директории.
 
     Args:
         directory (Path): Путь к директории с данными
+        states (list[str]): Фильтрация по штатам (аббревиатуры заглавными)
+        crop_type (list[str]): Фильтрация по культуре зерна (заглавными)
 
     Returns:
         list[Path]: Список путей к файлам данных
     """
-    return [
-        f
-        for d in directory.iterdir()
-        for sd in d.iterdir()
-        for f in sd.iterdir()
-    ]
+    # год
+    states = [] if states is None else states
+    crops = [] if crops is None else crops
+
+    paths = []
+    for d in directory.iterdir():
+        # штат или культура
+        for sd in d.iterdir():
+            if sd.name not in (states + crops):
+                continue
+            paths.extend([f for f in sd.iterdir()])
+    return paths
 
 
 def read_multiple_csvs(files: list[Path]) -> pd.DataFrame:
@@ -320,6 +362,7 @@ def generate_image_paths(df: pd.DataFrame) -> pd.Series:
         + df["month"].astype(str).str.zfill(2)
         + "-"
         + df["day"].astype(str).str.zfill(2)
+        + ".npy"
     )
 
 

@@ -172,8 +172,8 @@ if __name__ == "__main__":
     model = RNNRegressor(
         rnn_type=rnn_type,
         input_size=train_dataset.X.shape[2],  # Количество фичей
-        hidden_size=200,
-        num_layers=2,
+        hidden_size=500,
+        num_layers=24,
         dropout=0.3,
         device=device,
     )
@@ -184,8 +184,8 @@ if __name__ == "__main__":
         model=model,
         train_dataset=train_dataset,
         val_dataset=test_dataset,
-        batch_size=128,
-        num_epochs=500,
+        batch_size=64,
+        num_epochs=1000,
         learning_rate=0.001,
         patience=10,
         device=device,

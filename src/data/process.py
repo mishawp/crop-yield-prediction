@@ -1,9 +1,13 @@
+import torch
+import joblib
 import numpy as np
 import pandas as pd
-import joblib
+import torch.nn as nn
+from tqdm import tqdm
+from torchvision import models, transforms
 from pathlib import Path
 from sklearn.base import TransformerMixin
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import MinMaxScaler, RobustScaler
 
 PATH_INTERIM = Path("data/interim")
 PATH_PROCESSED = Path("data/processed")
@@ -48,18 +52,33 @@ def process() -> None:
     # 9. Добавление средних значений таргета за предыдущий год
     data["mean_prev_year_target"] = get_prev_target_mean(data, y)
 
-    # 10. Разделение на train/test
+    # 10. Получение эмбедингов из изображений
+    images_features = process_images_to_features(
+        data["images"].apply(lambda x: PATH_INTERIM / x), device="cuda"
+    )
+    data = pd.concat([data, images_features], axis=1)
+
+    # 11. Разделение на train/test
     X_train, X_test, y_train, y_test = split_train_test(data)
 
-    # 11. Нормализация данных
+    # 12. Нормализация данных
     features_to_scale = X_train.select_dtypes(
         include=[np.float32, np.float64]
     ).columns.tolist()
     X_train, X_test, scaler = scale_features(
-        X_train, X_test, features_to_scale, scaler=MinMaxScaler()
+        X_train, X_test, features_to_scale, scaler=RobustScaler()
     )
 
-    # 112. Проверка и сохранение данных
+    # Упорядочим колонки
+    meta_cols = ["year", "fips", "month", "day", "images"]
+    X_train = X_train[
+        meta_cols + np.sort(X_train.columns.difference(meta_cols)).tolist()
+    ]
+    X_test = X_test[
+        meta_cols + np.sort(X_test.columns.difference(meta_cols)).tolist()
+    ]
+
+    # 13. Проверка и сохранение данных
     validate_and_save(X_train, X_test, y_train, y_test)
 
 
@@ -163,34 +182,84 @@ def get_prev_target_mean(X: pd.DataFrame, y: pd.DataFrame) -> pd.DataFrame:
     Returns:
         pd.Series: Серия с средними значениями таргета за предыдущий год
     """
-    y_year_mean = y.drop("fips", axis=1).groupby("year").mean().squeeze()
-    y_year_mean.index = y_year_mean.index.astype(X["year"].dtype)
-    return X["year"].apply(lambda x: y_year_mean[x - 1])
+    y = y.copy()
+    X = X[["year", "fips"]].copy()
+
+    y["state"] = y["fips"].astype(str).str[:2].astype(np.int32)
+    y.drop("fips", axis=1, inplace=True)
+
+    y_year_mean = y.groupby(["year", "state"]).mean().squeeze()
+
+    X["state"] = X["fips"].astype(str).str[:2].astype(np.int32)
+    return X.apply(lambda x: y_year_mean[(x["year"] - 1, x["state"])], axis=1)
 
 
-def split_train_test(
-    data: pd.DataFrame,
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
-    """
-    Разделение данных на train/test.
+def process_images_to_features(
+    paths_images: pd.Series,
+    device: str = "cuda",
+    show_progress: bool = True,
+) -> pd.DataFrame:
+    """Извлекает усредненные признаки изображений с помощью ResNet18.
 
     Args:
-        data (pd.DataFrame): Полный DataFrame для разделения
+        paths_images (pd.Series): Список путей к .npy файлам с изображениями
+        device (str): Устройство для вычислений ('cuda' или 'cpu')
+        show_progress (bool): Показывать прогресс-бар
 
     Returns:
-        tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
-        Кортеж с (X_train, X_test, y_train, y_test)
+        DataFrame с признаками
     """
-    mask = data["year"] == data["year"].max()
-    data_train = data[~mask]
-    data_test = data[mask]
+    # Инициализация устройства
+    device = torch.device(
+        "cuda" if torch.cuda.is_available() and device == "cuda" else "cpu"
+    )
 
-    X_train = data_train.drop("yield_bu_per_acre", axis=1)
-    y_train = data_train["yield_bu_per_acre"]
-    X_test = data_test.drop("yield_bu_per_acre", axis=1)
-    y_test = data_test["yield_bu_per_acre"]
+    weights = models.ResNet18_Weights.IMAGENET1K_V1
+    model = models.resnet18(weights=weights).to(device)
 
-    return X_train, X_test, y_train, y_test
+    # Удаляем последний слой (классификатор)
+    model = nn.Sequential(*list(model.children())[:-1])
+    model.eval()
+
+    # Трансформации с использованием новых весов
+    transform = transforms.Compose(
+        [
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=weights.transforms().mean, std=weights.transforms().std
+            ),
+        ]
+    )
+
+    features_list = []
+
+    # Оборачиваем в tqdm для отображения прогресса
+    iterator = (
+        tqdm(paths_images, desc="Processing images")
+        if show_progress
+        else paths_images
+    )
+
+    for npy_file in iterator:
+        # Загружаем изображения
+        images = np.load(npy_file)  # shape: (n, 224, 224, 3)
+
+        # Батч-обработка
+        with torch.no_grad():
+            batch = torch.stack([transform(img) for img in images]).to(device)
+            features = model(batch)  # (n, 512, 1, 1)
+            # Добавляем Global Average Pooling и сжимаем размерности
+            features = features.mean(dim=[2, 3]).cpu().numpy()  # (n, 512)
+            features = features
+            avg_features = np.mean(features, axis=0)  # (512,)
+
+        features_list.append(avg_features)
+
+    # Создаем DataFrame
+    features_df = pd.DataFrame(features_list, index=paths_images.index)
+    features_df.columns = [f"embed_{i}" for i in range(features_df.shape[1])]
+
+    return features_df
 
 
 def scale_features(
@@ -228,6 +297,31 @@ def scale_features(
     X_test[features_to_scale] = X_test_scaled
 
     return X_train, X_test, scaler
+
+
+def split_train_test(
+    data: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
+    """
+    Разделение данных на train/test.
+
+    Args:
+        data (pd.DataFrame): Полный DataFrame для разделения
+
+    Returns:
+        tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
+        Кортеж с (X_train, X_test, y_train, y_test)
+    """
+    mask = data["year"] == data["year"].max()
+    data_train = data[~mask]
+    data_test = data[mask]
+
+    X_train = data_train.drop("yield_bu_per_acre", axis=1)
+    y_train = data_train["yield_bu_per_acre"]
+    X_test = data_test.drop("yield_bu_per_acre", axis=1)
+    y_test = data_test["yield_bu_per_acre"]
+
+    return X_train, X_test, y_train, y_test
 
 
 def validate_and_save(
