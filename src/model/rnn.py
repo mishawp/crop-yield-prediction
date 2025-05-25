@@ -41,7 +41,8 @@ class RNNRegressor(nn.Module):
         )
 
         # Output layer for regression (single output)
-        self.fc = nn.Linear(hidden_size, 1)
+        self.fc1 = nn.Linear(hidden_size, hidden_size)
+        self.fc2 = nn.Linear(hidden_size, 1)
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         """
@@ -75,6 +76,7 @@ class RNNRegressor(nn.Module):
         out_rnn = out_rnn[:, -1, :]
 
         # Final regression output
-        out_fc = self.fc(out_rnn)
+        out_fc1 = self.fc1(out_rnn)
+        out_fc2 = self.fc2(out_fc1)
 
-        return out_fc
+        return out_fc2

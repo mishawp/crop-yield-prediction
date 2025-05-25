@@ -20,11 +20,12 @@ def process() -> None:
     y = pd.read_csv(PATH_INTERIM / "y.csv")
 
     # 2. Добавление target_year
-    X["target_year"] = np.where(X["month"] >= 11, X["year"] + 1, X["year"])
+    # X["target_year"] = np.where(X["month"] >= 11, X["year"] + 1, X["year"])
+    X = X[(X["month"] > 2) & (X["month"] < 9)]  # март - август включительно
 
     # 3. Удаление данных первого и последнего года
-    min_year, max_year = X["year"].min(), X["year"].max()
-    X = filter_extreme_years(X, min_year, max_year)
+    # min_year, max_year = X["year"].min(), X["year"].max()
+    # X = filter_extreme_years(X, min_year, max_year)
 
     # 4. Удаление лишних признаков
     # columns_to_drop = [
@@ -42,13 +43,13 @@ def process() -> None:
     data = sort_data(data)
 
     # 7. Обработка пропущенных значений
-    data = handle_missing_values(data)
+    # data = handle_missing_values(data)
 
     # 8. Удаление сентября-октября
-    data = data[~data["month"].isin([9, 10])]
+    # data = data[~data["month"].isin([9, 10])]
 
     # 9. Добавление средних значений таргета за предыдущий год
-    data["mean_prev_year_target"] = get_prev_target_mean(data, y)
+    # data["mean_prev_year_target"] = get_prev_target_mean(data, y)
 
     # 10. Получение эмбедингов из изображений
     # images_features = process_images_to_features(
@@ -113,16 +114,15 @@ def merge_with_targets(X: pd.DataFrame, y: pd.DataFrame) -> pd.DataFrame:
     Returns:
         pd.DataFrame: Объединенный DataFrame
     """
-    y["year"] = y["year"].astype(X["target_year"].dtype)
+    y["year"] = y["year"].astype(X["year"].dtype)
     data = pd.merge(
-        X.drop("year", axis=1),
+        X,
         y,
-        how="left",
-        left_on=["target_year", "fips"],
-        right_on=["year", "fips"],
+        how="inner",
+        on=["year", "fips"],
     )
-    data.drop("year", axis=1, inplace=True)
-    data.rename({"target_year": "year"}, axis=1, inplace=True)
+    # data.drop("year", axis=1, inplace=True)
+    # data.rename({"target_year": "year"}, axis=1, inplace=True)
     return data
 
 
@@ -136,11 +136,8 @@ def sort_data(data: pd.DataFrame) -> pd.DataFrame:
     Returns:
         pd.DataFrame: Отсортированный DataFrame
     """
-    data["month_priority"] = np.where(data["month"] < 11, True, False)
-    data.sort_values(
-        ["year", "fips", "month_priority", "month", "day"], inplace=True
-    )
-    data.drop("month_priority", axis=1, inplace=True)
+    # data["month_priority"] = np.where(data["month"] < 11, True, False)
+    data.sort_values(["year", "fips", "month", "day"], inplace=True)
     return data
 
 
@@ -154,13 +151,13 @@ def handle_missing_values(data: pd.DataFrame) -> pd.DataFrame:
     Returns:
         pd.DataFrame: DataFrame с обработанными пропусками
     """
-    # Удаление строк, где для января-октября нет yield_bu_per_acre
-    data = data[~((data["month"] < 11) & (data["yield_bu_per_acre"].isna()))]
+    # # Удаление строк, где для января-октября нет yield_bu_per_acre
+    # data = data[~((data["month"] < 11) & (data["yield_bu_per_acre"].isna()))]
 
-    # Заполнение пропусков обратным заполнением
-    data.loc[:, ["year", "yield_bu_per_acre"]] = data[
-        ["year", "yield_bu_per_acre"]
-    ].bfill()
+    # # Заполнение пропусков обратным заполнением
+    # data.loc[:, ["year", "yield_bu_per_acre"]] = data[
+    #     ["year", "yield_bu_per_acre"]
+    # ].bfill()
 
     # Оставляем только полные годы (12 месяцев)
     data = data[

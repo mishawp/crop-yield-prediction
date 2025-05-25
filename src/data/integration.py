@@ -157,7 +157,7 @@ def prepare_hrrr(file_paths: list[Path]) -> pd.DataFrame:
             .agg(aggregation)
             .reset_index()
         )
-        df = df[~((df["day"] == 29) & (df["month"] == 2))]
+        # df = df[~((df["day"] == 29) & (df["month"] == 2))]
         dfs.append(df)
 
     result = pd.concat(dfs, ignore_index=True)
