@@ -49,8 +49,8 @@ COLUMN_RENAMING = {
 }
 
 # Целевые штаты и культуры для анализа
-TARGET_STATES = ["IOWA", "ILLINOIS"]
-TARGET_STATES_SHORT = ["IA", "IL"]
+TARGET_STATES = ["IOWA", "ILLINOIS", "INDIANA", "KENTUCKY", "MISSOURI", "OHIO"]
+TARGET_STATES_SHORT = ["IA", "IL", "IN", "KY", "MO", "OH"]
 TARGET_CROPS = ["CORN"]
 
 
@@ -60,9 +60,9 @@ def integrate_datasets() -> None:
     Выполняет загрузку, обработку и сохранение данных.
     """
     # Загрузка и подготовка данных
-    sentinel_files = get_data_files(
-        PATH_SENTINEL, states=TARGET_STATES_SHORT, crops=None
-    )
+    # sentinel_files = get_data_files(
+    #     PATH_SENTINEL, states=TARGET_STATES_SHORT, crops=None
+    # )
     hrrr_files = get_data_files(
         PATH_HRRR, states=TARGET_STATES_SHORT, crops=None
     )
@@ -88,12 +88,12 @@ def integrate_datasets() -> None:
     gc.collect()
 
     # Интеграция изображений
-    # Добавление путей к изображениям и сортировка
+    # # Добавление путей к изображениям и сортировка
     X["images"] = generate_image_paths(X)
-    # сохранение изображений в data/interim/images
-    paths_images = prepare_and_save_sentinel(sentinel_files, X)
-    # удаляем данные, для которых нет изображений
-    X = clean_data_by_images(X, paths_images)
+    # # сохранение изображений в data/interim/images
+    # paths_images = prepare_and_save_sentinel(sentinel_files, X)
+    # # удаляем данные, для которых нет изображений
+    # X = clean_data_by_images(X, paths_images)
 
     X.sort_values(["year", "fips", "month", "day"], inplace=True)
     y.sort_values(["year", "fips"], inplace=True)
@@ -117,29 +117,29 @@ def prepare_hrrr(file_paths: list[Path]) -> pd.DataFrame:
     aggregation = {
         col: "mean"
         for col in [
-            "Lat (llcrnr)",
-            "Lon (llcrnr)",
-            "Lat (urcrnr)",
-            "Lon (urcrnr)",
-            "Avg Temperature (K)",
-            "Max Temperature (K)",
-            "Min Temperature (K)",
-            "Precipitation (kg m**-2)",
-            "Relative Humidity (%)",
-            "Wind Gust (m s**-1)",
-            "Wind Speed (m s**-1)",
-            "U Component of Wind (m s**-1)",
-            "V Component of Wind (m s**-1)",
-            "Downward Shortwave Radiation Flux (W m**-2)",
-            "Vapor Pressure Deficit (kPa)",
+            "lat_lower_left",
+            "lon_lower_left",
+            "lat_upper_right",
+            "lon_upper_right",
+            "temperature_avg",
+            "temperature_max",
+            "temperature_min",
+            "precipitation",
+            "humidity_relative",
+            "wind_gust",
+            "wind_speed",
+            "wind_u_component",
+            "wind_v_component",
+            "solar_radiation_downward",
+            "vapor_pressure_deficit",
         ]
     }
     aggregation.update(
         {
-            "Lat (llcrnr)": "min",
-            "Lon (llcrnr)": "min",
-            "Lat (urcrnr)": "max",
-            "Lon (urcrnr)": "max",
+            "lat_lower_left": "min",
+            "lon_lower_left": "min",
+            "lat_upper_right": "max",
+            "lon_upper_right": "max",
         }
     )
 
@@ -149,24 +149,64 @@ def prepare_hrrr(file_paths: list[Path]) -> pd.DataFrame:
     dfs = []
     for path in file_paths:
         df = pd.read_csv(path)
-        df = (
-            df[(df["Day"].isin([1, 15]))]
-            .dropna()
-            .drop(columns=columns_to_drop)
-        )
 
-        grouped = (
-            df.groupby(["Year", "FIPS Code", "Month", "Day"])
+        df = df.dropna().drop(columns=columns_to_drop)
+
+        df.rename(columns=COLUMN_RENAMING["HRRR"], inplace=True)
+
+        df = (
+            df.groupby(["year", "fips", "month", "day"])
             .agg(aggregation)
             .reset_index()
         )
-        dfs.append(grouped)
+
+        # coords = df[
+        #     [
+        #         "year",
+        #         "fips",
+        #         "lat_lower_left",
+        #         "lon_lower_left",
+        #         "lat_upper_right",
+        #         "lon_upper_right",
+        #     ]
+        # ]
+        df = df.drop(
+            [
+                "lat_lower_left",
+                "lon_lower_left",
+                "lat_upper_right",
+                "lon_upper_right",
+            ],
+            axis=1,
+        )
+
+        mask_split = df["day"] < 15
+        df_1 = df[mask_split].drop("day", axis=1)
+        df_2 = df[~mask_split].drop("day", axis=1)
+        df_1 = df_1.groupby(["year", "fips", "month"]).agg(
+            ["min", "mean", "max"]
+        )
+        df_2 = df_2.groupby(["year", "fips", "month"]).agg(
+            ["min", "mean", "max"]
+        )
+        df_1.columns = ["_".join(col).strip("_") for col in df_1.columns]
+        df_2.columns = ["_".join(col).strip("_") for col in df_2.columns]
+        df_1.reset_index(inplace=True)
+        df_2.reset_index(inplace=True)
+        df_1["day"] = 1
+        df_2["day"] = 15
+
+        df = pd.concat([df_1, df_2], ignore_index=True)
+        # # Занимает много времени операция ниже
+        # df = pd.merge(df, coords, how="left", on=["year", "fips"])
+
+        dfs.append(df)
 
     result = pd.concat(dfs, ignore_index=True)
-    result.rename(columns=COLUMN_RENAMING["HRRR"], inplace=True)
-    result[["year", "fips", "month", "day"]] = result[
-        ["year", "fips", "month", "day"]
-    ].astype(np.int32)
+
+    tmp = ["year", "fips", "month", "day"]
+    result[tmp] = result[tmp].astype(np.int32)
+    result = result[tmp + np.sort(result.columns.difference(tmp)).tolist()]
     return result
 
 

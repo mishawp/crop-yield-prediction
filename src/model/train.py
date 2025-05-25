@@ -173,7 +173,7 @@ if __name__ == "__main__":
         rnn_type=rnn_type,
         input_size=train_dataset.X.shape[2],  # Количество фичей
         hidden_size=500,
-        num_layers=24,
+        num_layers=2,
         dropout=0.3,
         device=device,
     )

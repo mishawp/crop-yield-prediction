@@ -27,15 +27,13 @@ def process() -> None:
     X = filter_extreme_years(X, min_year, max_year)
 
     # 4. Удаление лишних признаков
-    columns_to_drop = [
-        "lat_lower_left",
-        "lon_lower_left",
-        "lat_upper_right",
-        "lon_upper_right",
-        "temperature_max",
-        "temperature_avg",
-    ]
-    X.drop(columns_to_drop, axis=1, inplace=True)
+    # columns_to_drop = [
+    #     "lat_lower_left",
+    #     "lon_lower_left",
+    #     "lat_upper_right",
+    #     "lon_upper_right",
+    # ]
+    # X.drop(columns_to_drop, axis=1, inplace=True)
 
     # 5. Соединение с таргетами
     data = merge_with_targets(X, y)
@@ -53,10 +51,10 @@ def process() -> None:
     data["mean_prev_year_target"] = get_prev_target_mean(data, y)
 
     # 10. Получение эмбедингов из изображений
-    images_features = process_images_to_features(
-        data["images"].apply(lambda x: PATH_INTERIM / x), device="cuda"
-    )
-    data = pd.concat([data, images_features], axis=1)
+    # images_features = process_images_to_features(
+    #     data["images"].apply(lambda x: PATH_INTERIM / x), device="cuda"
+    # )
+    # data = pd.concat([data, images_features], axis=1)
 
     # 11. Разделение на train/test
     X_train, X_test, y_train, y_test = split_train_test(data)
