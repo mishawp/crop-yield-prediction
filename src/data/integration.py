@@ -78,9 +78,7 @@ def integrate_datasets() -> None:
     usda_df = prepare_usda(usda_files, TARGET_STATES, TARGET_CROPS)
 
     # Объединение признаков
-    X = pd.merge(
-        hrrr_df, era5_df, how="inner", on=["year", "month", "day", "fips"]
-    )
+    X = hrrr_df
     y = usda_df
 
     # Очистка памяти
@@ -159,47 +157,7 @@ def prepare_hrrr(file_paths: list[Path]) -> pd.DataFrame:
             .agg(aggregation)
             .reset_index()
         )
-
-        # coords = df[
-        #     [
-        #         "year",
-        #         "fips",
-        #         "lat_lower_left",
-        #         "lon_lower_left",
-        #         "lat_upper_right",
-        #         "lon_upper_right",
-        #     ]
-        # ]
-        df = df.drop(
-            [
-                "lat_lower_left",
-                "lon_lower_left",
-                "lat_upper_right",
-                "lon_upper_right",
-            ],
-            axis=1,
-        )
-
-        mask_split = df["day"] < 15
-        df_1 = df[mask_split].drop("day", axis=1)
-        df_2 = df[~mask_split].drop("day", axis=1)
-        df_1 = df_1.groupby(["year", "fips", "month"]).agg(
-            ["min", "mean", "max"]
-        )
-        df_2 = df_2.groupby(["year", "fips", "month"]).agg(
-            ["min", "mean", "max"]
-        )
-        df_1.columns = ["_".join(col).strip("_") for col in df_1.columns]
-        df_2.columns = ["_".join(col).strip("_") for col in df_2.columns]
-        df_1.reset_index(inplace=True)
-        df_2.reset_index(inplace=True)
-        df_1["day"] = 1
-        df_2["day"] = 15
-
-        df = pd.concat([df_1, df_2], ignore_index=True)
-        # # Занимает много времени операция ниже
-        # df = pd.merge(df, coords, how="left", on=["year", "fips"])
-
+        df = df[~((df["day"] == 29) & (df["month"] == 2))]
         dfs.append(df)
 
     result = pd.concat(dfs, ignore_index=True)
