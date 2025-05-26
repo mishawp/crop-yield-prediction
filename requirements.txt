@@ -8,10 +8,6 @@ pandas==2.2.3
 xarray==2025.4.0
 h5netcdf==1.6.1
 geopandas==1.0.1
-<<<<<<< Updated upstream
-cdsapi==0.7.6
-=======
 cdsapi==0.7.6
 scikit-learn==1.6.1
 torch==2.7.0+cu118
->>>>>>> Stashed changes

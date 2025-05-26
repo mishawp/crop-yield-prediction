@@ -28,13 +28,13 @@ def process() -> None:
     # X = filter_extreme_years(X, min_year, max_year)
 
     # 4. Удаление лишних признаков
-    # columns_to_drop = [
-    #     "lat_lower_left",
-    #     "lon_lower_left",
-    #     "lat_upper_right",
-    #     "lon_upper_right",
-    # ]
-    # X.drop(columns_to_drop, axis=1, inplace=True)
+    columns_to_drop = [
+        "lat_lower_left",
+        "lon_lower_left",
+        "lat_upper_right",
+        "lon_upper_right",
+    ]
+    X.drop(columns_to_drop, axis=1, inplace=True)
 
     # 5. Соединение с таргетами
     data = merge_with_targets(X, y)
@@ -65,7 +65,7 @@ def process() -> None:
         include=[np.float32, np.float64]
     ).columns.tolist()
     X_train, X_test, scaler = scale_features(
-        X_train, X_test, features_to_scale, scaler=RobustScaler()
+        X_train, X_test, features_to_scale, scaler=MinMaxScaler()
     )
 
     # Упорядочим колонки
@@ -78,7 +78,7 @@ def process() -> None:
     ]
 
     # 13. Проверка и сохранение данных
-    validate_and_save(X_train, X_test, y_train, y_test)
+    save(X_train, X_test, y_train, y_test)
 
 
 def filter_extreme_years(
@@ -121,8 +121,6 @@ def merge_with_targets(X: pd.DataFrame, y: pd.DataFrame) -> pd.DataFrame:
         how="inner",
         on=["year", "fips"],
     )
-    # data.drop("year", axis=1, inplace=True)
-    # data.rename({"target_year": "year"}, axis=1, inplace=True)
     return data
 
 
@@ -136,7 +134,6 @@ def sort_data(data: pd.DataFrame) -> pd.DataFrame:
     Returns:
         pd.DataFrame: Отсортированный DataFrame
     """
-    # data["month_priority"] = np.where(data["month"] < 11, True, False)
     data.sort_values(["year", "fips", "month", "day"], inplace=True)
     return data
 
@@ -151,14 +148,6 @@ def handle_missing_values(data: pd.DataFrame) -> pd.DataFrame:
     Returns:
         pd.DataFrame: DataFrame с обработанными пропусками
     """
-    # # Удаление строк, где для января-октября нет yield_bu_per_acre
-    # data = data[~((data["month"] < 11) & (data["yield_bu_per_acre"].isna()))]
-
-    # # Заполнение пропусков обратным заполнением
-    # data.loc[:, ["year", "yield_bu_per_acre"]] = data[
-    #     ["year", "yield_bu_per_acre"]
-    # ].bfill()
-
     # Оставляем только полные годы (12 месяцев)
     data = data[
         data.groupby(["year", "fips"])["month"].transform("nunique") == 12
@@ -319,7 +308,7 @@ def split_train_test(
     return X_train, X_test, y_train, y_test
 
 
-def validate_and_save(
+def save(
     X_train: pd.DataFrame,
     X_test: pd.DataFrame,
     y_train: pd.Series,
@@ -342,17 +331,6 @@ def validate_and_save(
     )
     X_train = X_train[columns_order]
     X_test = X_test[columns_order]
-
-    # Проверка целостности данных
-    def check_data_integrity(data: pd.DataFrame) -> None:
-        grouped = data.groupby(["year", "fips"])
-        assert (grouped["yield_bu_per_acre"].nunique() == 1).all()
-        # assert (grouped["month"].coun == 20).all()
-
-    data_train = pd.concat([X_train, y_train], axis=1)
-    data_test = pd.concat([X_test, y_test], axis=1)
-    check_data_integrity(data_train)
-    check_data_integrity(data_test)
 
     # Сохранение данных
     if not PATH_PROCESSED.exists():

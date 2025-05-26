@@ -157,7 +157,6 @@ def prepare_hrrr(file_paths: list[Path]) -> pd.DataFrame:
             .agg(aggregation)
             .reset_index()
         )
-        # df = df[~((df["day"] == 29) & (df["month"] == 2))]
         dfs.append(df)
 
     result = pd.concat(dfs, ignore_index=True)
@@ -270,7 +269,7 @@ def prepare_and_save_sentinel(
                     if output_file.exists():
                         continue
 
-                    # (X, 224, 224, 3) - X -кол
+                    # (n, 224, 224, 3) - n - кол-во изображений
                     np.save(output_file, images["data"][:])
     return images_paths
 
@@ -372,6 +371,8 @@ def save_data(X: pd.DataFrame, y: pd.DataFrame | pd.Series) -> None:
         X (pd.DataFrame): DataFrame с признаками
         y (pd.DataFrame | pd.Series): Целевая переменная
     """
+    if not PATH_INTERIM.exists():
+        PATH_INTERIM.mkdir()
     X.to_csv(PATH_INTERIM / "X.csv", index=False)
     y.to_csv(PATH_INTERIM / "y.csv", index=False)
 
