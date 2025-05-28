@@ -187,6 +187,7 @@ rabish/
 /data/**
 !/data/*.dvc
 postgres_data
+mlruns
 
 # dvc pipelines
 *nbconvert.ipynb

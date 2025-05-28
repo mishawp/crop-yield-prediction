@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from typing import Literal
+from torchvision.models import resnet18
 
 
 class RNNRegressor(nn.Module):
@@ -78,3 +79,55 @@ class RNNRegressor(nn.Module):
         out_fc = self.fc(out_rnn)
 
         return out_fc
+
+
+class MultiCNNGRU(nn.Module):
+    def __init__(self, num_frames=12, hidden_size=128, num_layers=1):
+        super().__init__()
+
+        self.num_frames = num_frames
+
+        # Создаем отдельную CNN для каждого фрейма
+        self.cnns = nn.ModuleList(
+            [
+                nn.Sequential(
+                    *list(resnet18().children())[:-1],
+                    nn.AdaptiveAvgPool2d((1, 1)),
+                    nn.Flatten(),
+                )
+                for _ in range(num_frames)
+            ]
+        )
+
+        # RNN часть
+        self.rnn = nn.GRU(
+            input_size=512,  # Размер фичей ResNet18
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            batch_first=True,
+        )
+
+        # Регрессионная головка
+        self.fc = nn.Linear(hidden_size, 1)
+
+    def forward(self, x):
+        # x.shape = [batch_size, timesteps=12, C, H, W]
+        batch_size = x.size(0)
+
+        # Обрабатываем каждый фрейм своей CNN
+        cnn_outputs = []
+        for i in range(self.num_frames):
+            frame = x[:, i, :, :, :]  # Берем i-й фрейм
+            cnn_out = self.cnns[i](frame)  # Обрабатываем i-й CNN
+            cnn_outputs.append(cnn_out)
+
+        # Объединяем выходы CNN
+        r_in = torch.stack(cnn_outputs, dim=1)  # [batch_size, timesteps, 512]
+
+        # Пропускаем через RNN
+        r_out, _ = self.rnn(r_in)
+
+        # Берем последнее скрытое состояние
+        output = self.fc(r_out[:, -1, :])
+
+        return output

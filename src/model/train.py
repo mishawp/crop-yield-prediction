@@ -5,8 +5,8 @@ from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 from pathlib import Path
 from sklearn.metrics import mean_squared_error, r2_score
-from src.data.dataset import Data
-from src.model.rnn import RNNRegressor
+from src.data.dataset import TabularDataset, ImagesDataset
+from src.model.models import RNNRegressor, MultiCNNGRU
 import mlflow
 import mlflow.pytorch
 
@@ -180,44 +180,47 @@ def main():
     # Configuration
     config = {
         "seed": 42,
-        "batch_size": 64,
+        "batch_size": 4,
         "num_epochs": 1000,
         "learning_rate": 0.001,
         "patience": 10,
         "data_path": Path("data/processed"),
-        "rnn_type": "GRU",
+        "model_type": "MultiCNNGRU",
         "hidden_size": 500,
         "num_layers": 2,
         "dropout": 0.3,
-        "mlflow_uri": "http://localhost:5000",
+        "mlflow_uri": "",
         "experiment_name": "Test",
     }
 
     set_random_seeds(config["seed"])
 
     # Initialize datasets
-    train_dataset = Data(
+    train_dataset = ImagesDataset(
         config["data_path"] / "X_train.csv",
         config["data_path"] / "y_train.csv",
     )
-    test_dataset = Data(
+    test_dataset = ImagesDataset(
         config["data_path"] / "X_test.csv", config["data_path"] / "y_test.csv"
     )
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Initialize model
-    model = RNNRegressor(
-        rnn_type=config["rnn_type"],
-        input_size=train_dataset.X.shape[2],
+    # model = RNNRegressor(
+    #     rnn_type=config["rnn_type"],
+    #     input_size=train_dataset.X.shape[2],
+    #     hidden_size=config["hidden_size"],
+    #     num_layers=config["num_layers"],
+    #     dropout=config["dropout"],
+    #     device=device,
+    # )
+    model = MultiCNNGRU(
+        num_frames=train_dataset.X.shape[1],
         hidden_size=config["hidden_size"],
-        num_layers=config["num_layers"],
-        dropout=config["dropout"],
-        device=device,
+        num_layers=1,
     )
-    print(f"Training {config['rnn_type']} model on {device}")
-
-    # Log model architecture parameters
+    print(f"Training {config['model_type']} model on {device}")
 
     # Train model
     trainer = ModelTrainer(

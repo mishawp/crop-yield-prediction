@@ -5,6 +5,7 @@ import pandas as pd
 import torch.nn as nn
 from tqdm import tqdm
 from torchvision import models, transforms
+from PIL import Image
 from pathlib import Path
 from sklearn.base import TransformerMixin
 from sklearn.preprocessing import MinMaxScaler, RobustScaler
@@ -20,14 +21,9 @@ def process() -> None:
     y = pd.read_csv(PATH_INTERIM / "y.csv")
 
     # 2. Добавление target_year
-    # X["target_year"] = np.where(X["month"] >= 11, X["year"] + 1, X["year"])
     X = X[(X["month"] > 2) & (X["month"] < 9)]  # март - август включительно
 
-    # 3. Удаление данных первого и последнего года
-    # min_year, max_year = X["year"].min(), X["year"].max()
-    # X = filter_extreme_years(X, min_year, max_year)
-
-    # 4. Удаление лишних признаков
+    # 3. Удаление лишних признаков
     columns_to_drop = [
         "lat_lower_left",
         "lon_lower_left",
@@ -36,31 +32,19 @@ def process() -> None:
     ]
     X.drop(columns_to_drop, axis=1, inplace=True)
 
-    # 5. Соединение с таргетами
+    # 4. Соединение с таргетами
     data = merge_with_targets(X, y)
 
-    # 6. Сортировка данных
+    # 5. Сортировка данных
     data = sort_data(data)
 
-    # 7. Обработка пропущенных значений
-    # data = handle_missing_values(data)
+    # 6. Обработка изображений (приведение к (3, W, H))
+    resize_and_save_images(data["images"].dropna())
 
-    # 8. Удаление сентября-октября
-    # data = data[~data["month"].isin([9, 10])]
-
-    # 9. Добавление средних значений таргета за предыдущий год
-    # data["mean_prev_year_target"] = get_prev_target_mean(data, y)
-
-    # 10. Получение эмбедингов из изображений
-    # images_features = process_images_to_features(
-    #     data["images"].apply(lambda x: PATH_INTERIM / x), device="cuda"
-    # )
-    # data = pd.concat([data, images_features], axis=1)
-
-    # 11. Разделение на train/test
+    # 7. Разделение на train/test
     X_train, X_test, y_train, y_test = split_train_test(data)
 
-    # 12. Нормализация данных
+    # 8. Нормализация данных
     features_to_scale = X_train.select_dtypes(
         include=[np.float32, np.float64]
     ).columns.tolist()
@@ -69,15 +53,15 @@ def process() -> None:
     )
 
     # Упорядочим колонки
-    meta_cols = ["year", "fips", "month", "day", "images"]
+    sort_cols = ["year", "fips", "month", "day", "images"]
     X_train = X_train[
-        meta_cols + np.sort(X_train.columns.difference(meta_cols)).tolist()
+        sort_cols + np.sort(X_train.columns.difference(sort_cols)).tolist()
     ]
     X_test = X_test[
-        meta_cols + np.sort(X_test.columns.difference(meta_cols)).tolist()
+        sort_cols + np.sort(X_test.columns.difference(sort_cols)).tolist()
     ]
 
-    # 13. Проверка и сохранение данных
+    # 9. Проверка и сохранение данных
     save(X_train, X_test, y_train, y_test)
 
 
@@ -244,6 +228,34 @@ def process_images_to_features(
     features_df.columns = [f"embed_{i}" for i in range(features_df.shape[1])]
 
     return features_df
+
+
+def resize_and_save_images(paths_images: pd.Series):
+    """Резайзит изображения и сохраняет их по пути PATH_PROCESSED / images
+    Args:
+        paths_images (pd.Series): относительные пути к изображениям .npy
+    """
+    preprocess = transforms.Compose(
+        [
+            transforms.ToPILImage(),
+            transforms.Resize(256),  # изменение размера
+            transforms.CenterCrop(224),  # центр-кроп до 224x224
+            transforms.ToTensor(),  # преобразование в тензор [0,1]
+            transforms.Normalize(  # нормализация по ImageNet
+                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+            ),
+        ]
+    )
+    if not (tmp := (PATH_PROCESSED / "images")).exists():
+        tmp.mkdir(parents=True)
+    for path in paths_images:
+        image = np.load(PATH_INTERIM / path)
+
+        # Конвертируем в тензор и ресайзим
+        image_t = torch.from_numpy(image)
+        image_resized = preprocess(image_t)
+
+        np.save(PATH_PROCESSED / path, image_resized)
 
 
 def scale_features(

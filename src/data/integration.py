@@ -49,8 +49,10 @@ COLUMN_RENAMING = {
 }
 
 # Целевые штаты и культуры для анализа
-TARGET_STATES = ["IOWA", "ILLINOIS", "INDIANA", "KENTUCKY", "MISSOURI", "OHIO"]
-TARGET_STATES_SHORT = ["IA", "IL", "IN", "KY", "MO", "OH"]
+# TARGET_STATES = ["IOWA", "ILLINOIS", "INDIANA", "KENTUCKY", "MISSOURI", "OHIO"]
+# TARGET_STATES_SHORT = ["IA", "IL", "IN", "KY", "MO", "OH"]
+TARGET_STATES = ["IOWA"]
+TARGET_STATES_SHORT = ["IA"]
 TARGET_CROPS = ["CORN"]
 
 
@@ -60,9 +62,6 @@ def integrate_datasets() -> None:
     Выполняет загрузку, обработку и сохранение данных.
     """
     # Загрузка и подготовка данных
-    # sentinel_files = get_data_files(
-    #     PATH_SENTINEL, states=TARGET_STATES_SHORT, crops=None
-    # )
     hrrr_files = get_data_files(
         PATH_HRRR, states=TARGET_STATES_SHORT, crops=None
     )
@@ -77,7 +76,6 @@ def integrate_datasets() -> None:
     era5_df = prepare_era5(era5_files)
     usda_df = prepare_usda(usda_files, TARGET_STATES, TARGET_CROPS)
 
-    # Объединение признаков
     X = hrrr_df
     y = usda_df
 
@@ -86,12 +84,15 @@ def integrate_datasets() -> None:
     gc.collect()
 
     # Интеграция изображений
-    # # Добавление путей к изображениям и сортировка
-    X["images"] = generate_image_paths(X)
-    # # сохранение изображений в data/interim/images
-    # paths_images = prepare_and_save_sentinel(sentinel_files, X)
-    # # удаляем данные, для которых нет изображений
-    # X = clean_data_by_images(X, paths_images)
+    sentinel_files = get_data_files(
+        PATH_SENTINEL, states=TARGET_STATES_SHORT, crops=None
+    )
+    # Добавление путей к изображениям и сортировка
+    generate_image_paths(X)
+    # сохранение изображений в data/interim/images
+    paths_images = prepare_and_save_sentinel(sentinel_files, X)
+    # удаляем данные, для которых нет изображений
+    X = clean_data_by_images(X, paths_images)
 
     X.sort_values(["year", "fips", "month", "day"], inplace=True)
     y.sort_values(["year", "fips"], inplace=True)
@@ -103,7 +104,7 @@ def integrate_datasets() -> None:
 
 def prepare_hrrr(file_paths: list[Path]) -> pd.DataFrame:
     """
-    Подготавливает данные WRF-HRRR для интеграции.
+    Подготавливает данные WRF-HRRR.
 
     Args:
         file_paths (list[Path]): Список путей к файлам с данными WRF-HRRR
@@ -169,7 +170,7 @@ def prepare_hrrr(file_paths: list[Path]) -> pd.DataFrame:
 
 def prepare_era5(file_paths: list[Path]) -> pd.DataFrame:
     """
-    Подготавливает данные ERA5-Land для интеграции.
+    Подготавливает данные ERA5-Land.
 
     Args:
         file_paths (list[Path]): Список путей к файлам с данными ERA5-Land
@@ -240,11 +241,60 @@ def prepare_usda(
     return df
 
 
+def concat_images(images: np.ndarray, coordinates: np.ndarray) -> np.ndarray:
+    """Объединяет набор снимков в одно изображение согласно координатам. Меняет порядок следование (H, W, C) на (C, H, W)
+
+    Args:
+        images (np.ndarray): Набор снимков формы (n, height, width, channels).
+        coordinates (np.ndarray): Координаты снимков формы (n, 2, 2),
+                                 где [i, 0, :] — нижний левый угол (lat, lon),
+                                 [i, 1, :] — верхний правый угол (lat, lon).
+
+    Returns:
+        np.ndarray: Объединённое изображение формы
+                    (n_rows * height, n_cols * width, channels).
+    """
+    ll_coords = coordinates[:, 0, :]  # Нижние левые углы (lat, lon)
+
+    # Уникальные широты и долготы (сортировка для правильного расположения)
+    # Широты: большие сверху
+    unique_lats = np.sort(np.unique(ll_coords[:, 0]))[::-1]
+    # Долготы: малые слева
+    unique_lons = np.sort(np.unique(ll_coords[:, 1]))
+
+    n_rows = len(unique_lats)
+    n_cols = len(unique_lons)
+    n_images, height, width, channels = images.shape
+
+    # Создаём пустое изображение для сборки
+    combined_image = np.zeros(
+        (n_rows * height, n_cols * width, channels), dtype=images.dtype
+    )
+
+    # Заполняем сетку изображениями
+    for img_idx in range(n_images):
+        ll_lat, ll_lon = ll_coords[img_idx]
+        # Находим строку и столбец для текущего изображения
+        row = np.where(unique_lats == ll_lat)[0][0]
+        col = np.where(unique_lons == ll_lon)[0][0]
+
+        # Вычисляем координаты вставки
+        y_start = row * height
+        y_end = (row + 1) * height
+        x_start = col * width
+        x_end = (col + 1) * width
+
+        # Вставляем изображение
+        combined_image[y_start:y_end, x_start:x_end, :] = images[img_idx]
+
+    return np.transpose(combined_image, (2, 0, 1))
+
+
 def prepare_and_save_sentinel(
     file_paths: list[Path], X: pd.DataFrame
 ) -> list[str]:
     """
-    Обрабатывает изображения Sentinel и сохраняет их в требуемом формате.
+    Обрабатывает изображения Sentinel и сохраняет их в требуемом формате. Снимки для пары year, fips объединяются в один в соответствие с координатами и сохраняются как (C, H, W). Т.е. (n, 224, 224, 3) -> (H, W, 3), где H, W могут меняться от набора снимка к набору.
 
     Args:
         file_paths (list[Path]): Список путей к файлам с изображениями
@@ -253,6 +303,7 @@ def prepare_and_save_sentinel(
     Returns:
         list[str]: Список из относительных путей к файлам изображений
     """
+    existing_images_in_X = X["images"].dropna()
     images_dir = PATH_INTERIM / "images"
     images_dir.mkdir(parents=True, exist_ok=True)
     images_paths = []
@@ -261,7 +312,10 @@ def prepare_and_save_sentinel(
             for fips, dates in h5.items():
                 for date, images in dates.items():
                     file_name = f"{fips}-{date}.npy"
-                    if f"images/{file_name}" not in X["images"].values:
+                    if (
+                        f"images/{file_name}"
+                        not in existing_images_in_X.values
+                    ):
                         continue
 
                     output_file = images_dir / file_name
@@ -269,19 +323,37 @@ def prepare_and_save_sentinel(
                     if output_file.exists():
                         continue
 
-                    # (n, 224, 224, 3) - n - кол-во изображений
-                    np.save(output_file, images["data"][:])
+                    image = concat_images(
+                        images["data"][:], images["coordinates"]
+                    )
+                    np.save(output_file, image)
     return images_paths
 
 
-def clean_data_by_images(data: pd.DataFrame, paths_images: pd.Series):
-    out = data[data["images"].isin(paths_images)]
-    mask = out.groupby(["year", "fips"])["day"].transform("count") == 24
-    images_for_del = out.loc[~mask, "images"]
-    for path in images_for_del:
-        (PATH_INTERIM / path).unlink()
-    out = out[mask]
-    return out
+def clean_data_by_images(
+    data: pd.DataFrame, paths_images: pd.Series
+) -> pd.DataFrame:
+    """Удаляет данные, для которых нет изображений
+
+    Args:
+        data (pd.DataFrame): датасет (должен содержать колонку images)
+        paths_images (pd.Series): пути к изображениям формата images/<fips>-<year>-<month>-<day>
+
+    Returns:
+        pd.DataFrame: измененный dataframe
+
+    """
+    # paths_images format: images/<fips>-<year>-<month>-<day>
+    existing_images_in_X = data["images"].dropna()
+    mask = existing_images_in_X.isin(paths_images)
+    needed = data.loc[mask[mask].index, ["year", "fips", "day"]]
+    needed = needed.loc[
+        needed.groupby(["year", "fips"])["day"].transform("count") == 24,
+        ["year", "fips"],
+    ].drop_duplicates()
+    data = pd.merge(data, needed, how="inner", on=["year", "fips"])
+
+    return data
 
 
 def get_data_files(
@@ -340,25 +412,26 @@ def create_fips_code(df: pd.DataFrame) -> pd.Series:
     return (state_code + county_code).astype(np.int32)
 
 
-def generate_image_paths(df: pd.DataFrame) -> pd.Series:
+def generate_image_paths(df: pd.DataFrame) -> None:
     """
-    Генерирует относительные пути к изображениям в формате 'images/<fips>-<year>-<month>-<day>'.
+    Генерирует относительные пути к изображениям в формате 'images/<fips>-<year>-<month>-<day>.npy'
+    для строк, где day равен 1 или 15. Модифицирует входной DataFrame, добавляя колонку 'images'.
 
     Args:
         df (pd.DataFrame): DataFrame с колонками fips, year, month, day
-
-    Returns:
-        pd.Series: Серия с путями к изображениям
     """
-    return (
+    df["images"] = None
+    mask = (df["day"] == 1) | (df["day"] == 15)
+    split = df.loc[mask]
+    df.loc[mask, "images"] = (
         "images/"
-        + df["fips"].astype(str)
+        + split["fips"].astype(str)
         + "-"
-        + df["year"].astype(str)
+        + split["year"].astype(str)
         + "-"
-        + df["month"].astype(str).str.zfill(2)
+        + split["month"].astype(str).str.zfill(2)
         + "-"
-        + df["day"].astype(str).str.zfill(2)
+        + split["day"].astype(str).str.zfill(2)
         + ".npy"
     )
 

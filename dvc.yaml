@@ -22,7 +22,5 @@ stages:
   train:
     cmd: python -m src.model.train
     deps:
-      - src/data/dataset.py
-      - src/model/rnn.py
       - src/model/train.py
       - data/processed
