@@ -5,13 +5,13 @@ stages:
     deps:
     - path: data/raw
       hash: md5
-      md5: b1b9c31e3e81fa59e28667dd3d8d42d3.dir
-      size: 67675224344
-      nfiles: 526
+      md5: 303cd23954470e2ae3ae4790ba1cb4a4.dir
+      size: 160383112800
+      nfiles: 618
     - path: src/data/integration.py
       hash: md5
-      md5: a33fae352699b80e4caa1e6b5acbae3f
-      size: 16015
+      md5: 077ad14cde3d78c75969382aa1990bc9
+      size: 16091
   processing:
     cmd: python -m src.data.process
     deps:
@@ -22,8 +22,8 @@ stages:
       nfiles: 0
     - path: src/data/process.py
       hash: md5
-      md5: 732e47035609e2789c7eec9c1accabf1
-      size: 13891
+      md5: c917e4997193cf3bd2afbcfb3880b7d3
+      size: 12943
   train:
     cmd: python -m src.model.train
     deps:
@@ -34,5 +34,5 @@ stages:
       nfiles: 0
     - path: src/model/train.py
       hash: md5
-      md5: a04ba6d28c0337f09da21a091c9fb8b9
-      size: 7979
+      md5: 5d6ad9236820b3878e1138c12aca1c7b
+      size: 13254

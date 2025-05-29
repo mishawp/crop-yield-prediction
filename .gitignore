@@ -191,3 +191,6 @@ mlruns
 
 # dvc pipelines
 *nbconvert.ipynb
+
+# models
+/models
