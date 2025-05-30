@@ -69,7 +69,7 @@ class ModelTrainer:
             "val_rmse": [],
         }
 
-        # Set up MLflow
+        # # Set up MLflow
         if mlflow_uri:
             MLflowTracing.set_mlflow_s3()
         mlflow.set_tracking_uri(mlflow_uri)
@@ -139,8 +139,6 @@ class ModelTrainer:
             # Log hyperparameters
             mlflow.log_params(
                 {
-                    # Системная информация
-                    "system.commit_hash": MLflowTracing.get_git_commit_hash(),
                     "system.device": self.device,
                     **MLflowTracing.get_system_info(),
                     # Гиперпараметры
@@ -160,6 +158,12 @@ class ModelTrainer:
                     ),
                 }
             )
+            mlflow.log_text(str(self.model), "model_architecture.txt")
+            mlflow.log_artifact("data.dvc", artifact_path="dvc")
+            mlflow.log_artifact(
+                "src/data/integration.py", artifact_path="code"
+            )
+            mlflow.log_artifact("src/data/process.py", artifact_path="code")
 
             for epoch in range(num_epochs):
                 train_r2, train_rmse = self.train_epoch()
@@ -209,15 +213,6 @@ class ModelTrainer:
                     f"Best model at epoch {best_epoch + 1} with R²: {best_val_r2:.4f}"
                 )
                 self.model.load_state_dict(best_model_weights)
-                mlflow.log_metrics(
-                    {
-                        "best_val_r2": best_val_r2,
-                        "best_val_rmse": best_val_rmse,
-                    }
-                )
-                mlflow.pytorch.log_model(self.model, "best_model")
-                if not PATH_MODELS.exists():
-                    PATH_MODELS.mkdir()
                 model_path = PATH_MODELS / (
                     f"{self.model.__class__.__name__}_"
                     f"{datetime.now().strftime('%Y%m%d_%H%M')}_"
@@ -228,6 +223,15 @@ class ModelTrainer:
                     model_path,
                 )
                 print(f"Model saved to {model_path}")
+                mlflow.log_metrics(
+                    {
+                        "best_val_r2": best_val_r2,
+                        "best_val_rmse": best_val_rmse,
+                    }
+                )
+                mlflow.pytorch.log_model(self.model, "best_model")
+                if not PATH_MODELS.exists():
+                    PATH_MODELS.mkdir()
 
         return self.model, self.history
 
@@ -284,19 +288,6 @@ class MLflowTracing:
             print(f"Failed to get system info: {e}")
             return {}
 
-    @staticmethod
-    def get_git_commit_hash() -> str:
-        """Получение хеша текущего коммита git."""
-        try:
-            return (
-                subprocess.check_output(["git", "rev-parse", "HEAD"])
-                .decode("ascii")
-                .strip()
-            )
-        except Exception as e:
-            print(f"Failed to get git commit hash: {e}")
-            return "unknown"
-
 
 class Runner:
     @staticmethod
@@ -325,7 +316,7 @@ class Runner:
             model=model,
             train_dataset=train_dataset,
             val_dataset=test_dataset,
-            batch_size=16,
+            batch_size=8,
             learning_rate=0.001,
             random_state=42,
             device=device,
@@ -334,8 +325,8 @@ class Runner:
         )
 
         trainer.run_training(
-            num_epochs=1000,
-            patience=10,
+            num_epochs=10,
+            patience=5,
         )
 
     @staticmethod
@@ -368,12 +359,12 @@ class Runner:
             model=model,
             train_dataset=train_dataset,
             val_dataset=test_dataset,
-            batch_size=128,
+            batch_size=256,
             learning_rate=0.001,
             random_state=42,
             device=device,
             mlflow_uri="http://localhost:5000",
-            experiment_name="Test",
+            experiment_name="IA_IL_WRF_HRRR_SENTINEL",
         )
 
         trainer.run_training(
@@ -383,4 +374,4 @@ class Runner:
 
 
 if __name__ == "__main__":
-    Runner.run_rnn()
+    Runner.run_multicnngru()

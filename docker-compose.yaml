@@ -1,7 +1,6 @@
 version: '3.8'
 
 services:
-  # PostgreSQL для метаданных MLflow
   postgres_mlflow:
     image: postgres:16-alpine
     environment:
@@ -13,20 +12,18 @@ services:
     ports:
       - "5432:5432"
 
-  # MLflow Tracking Server (подключается к вашему удалённому S3)
   mlflow:
     build: ./mlflow
     depends_on:
       - postgres_mlflow
     environment:
-      - AWS_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID}       # Ключ из IAM
-      - AWS_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY} # Секретный ключ
-      # - AWS_REGION=us-east-1                       # Регион S3
+      - AWS_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY}
       - MLFLOW_S3_ENDPOINT_URL=https://storage.yandexcloud.net
     command: >
       mlflow server
       --backend-store-uri postgresql://${MLFLOW_POSTGRES_USER}:${MLFLOW_POSTGRES_PASSWORD}@postgres_mlflow/${MLFLOW_POSTGRES_DB}
-      --default-artifact-root s3://mlflow-cyp/mlflow-artifacts
+      --default-artifact-root s3://mlflow-cyp/
       --host 0.0.0.0
       --port 5000
     ports:
