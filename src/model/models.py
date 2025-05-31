@@ -131,3 +131,24 @@ class MultiCNNGRU(nn.Module):
         output = self.fc(r_out[:, -1, :])
 
         return output
+
+
+class ResNetRegressor(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        # Используем ResNet18 без последнего слоя
+        self.resnet = nn.Sequential(
+            *list(resnet18().children())[:-1],
+            nn.AdaptiveAvgPool2d((1, 1)),
+            nn.Flatten(),
+        )
+
+        # Регрессионная головка
+        self.fc = nn.Linear(512, 1)  # 512 - размер фичей ResNet18
+
+    def forward(self, x):
+        # x.shape = [batch_size, C, H, W] - одно изображение
+        features = self.resnet(x)
+        output = self.fc(features)
+        return output

@@ -8,8 +8,8 @@ import numpy as np
 from torch import nn
 from torch.utils.data import Dataset, DataLoader
 from sklearn.metrics import mean_squared_error, r2_score
-from src.data.dataset import TabularDataset, ImagesDataset
-from src.model.models import RNNRegressor, MultiCNNGRU
+from src.data.dataset import TabularDataset, ImagesDataset, OneImageDataset
+from src.model.models import RNNRegressor, MultiCNNGRU, ResNetRegressor
 from tqdm import tqdm
 from pathlib import Path
 import mlflow
@@ -18,6 +18,51 @@ from dotenv import load_dotenv
 
 PATH_PROCESSED = Path("data/processed")
 PATH_MODELS = Path("models")
+
+
+class MLflowTracing:
+    """Класс для сбора системной информации и логирования в MLflow."""
+
+    @staticmethod
+    def set_mlflow_s3():
+        load_dotenv()
+        os.environ["AWS_ACCESS_KEY_ID"] = os.getenv("S3_ACCESS_KEY_ID")
+        os.environ["AWS_SECRET_ACCESS_KEY"] = os.getenv("S3_SECRET_ACCESS_KEY")
+        os.environ["MLFLOW_S3_ENDPOINT_URL"] = (
+            "https://storage.yandexcloud.net"
+        )
+
+    @staticmethod
+    def get_system_info() -> dict[str, str | float]:
+        """Сбор информации о системе."""
+        try:
+            gpu_name = (
+                torch.cuda.get_device_name(0)
+                if torch.cuda.is_available()
+                else "None"
+            )
+            gpu_memory = (
+                torch.cuda.get_device_properties(0).total_memory / (1024**3)
+                if torch.cuda.is_available()
+                else 0
+            )
+
+            return {
+                "system.system": platform.system(),
+                "system.processor": platform.processor(),
+                "system.cpu_cores_physical": psutil.cpu_count(logical=False),
+                "system.cpu_cores_logical": psutil.cpu_count(logical=True),
+                "system.total_memory_gb": round(
+                    psutil.virtual_memory().total / (1024.0**3), 2
+                ),
+                "system.gpu_name": gpu_name,
+                "system.gpu_memory_gb": round(gpu_memory, 2),
+                "system.python_version": platform.python_version(),
+                "system.torch_version": torch.__version__,
+            }
+        except Exception as e:
+            print(f"Failed to get system info: {e}")
+            return {}
 
 
 class ModelTrainer:
@@ -152,7 +197,6 @@ class ModelTrainer:
                     "model.optimizer": self.optimizer.__class__.__name__,
                     "model.loss_function": self.criterion.__class__.__name__,
                     # Доп параметры модели
-                    "model.architecture": str(self.model),
                     "model.num_params": sum(
                         p.numel() for p in self.model.parameters()
                     ),
@@ -244,51 +288,6 @@ class ModelTrainer:
         np.random.seed(seed)
 
 
-class MLflowTracing:
-    """Класс для сбора системной информации и логирования в MLflow."""
-
-    @staticmethod
-    def set_mlflow_s3():
-        load_dotenv()
-        os.environ["AWS_ACCESS_KEY_ID"] = os.getenv("S3_ACCESS_KEY_ID")
-        os.environ["AWS_SECRET_ACCESS_KEY"] = os.getenv("S3_SECRET_ACCESS_KEY")
-        os.environ["MLFLOW_S3_ENDPOINT_URL"] = (
-            "https://storage.yandexcloud.net"
-        )
-
-    @staticmethod
-    def get_system_info() -> dict[str, str | float]:
-        """Сбор информации о системе."""
-        try:
-            gpu_name = (
-                torch.cuda.get_device_name(0)
-                if torch.cuda.is_available()
-                else "None"
-            )
-            gpu_memory = (
-                torch.cuda.get_device_properties(0).total_memory / (1024**3)
-                if torch.cuda.is_available()
-                else 0
-            )
-
-            return {
-                "system.system": platform.system(),
-                "system.processor": platform.processor(),
-                "system.cpu_cores_physical": psutil.cpu_count(logical=False),
-                "system.cpu_cores_logical": psutil.cpu_count(logical=True),
-                "system.total_memory_gb": round(
-                    psutil.virtual_memory().total / (1024.0**3), 2
-                ),
-                "system.gpu_name": gpu_name,
-                "system.gpu_memory_gb": round(gpu_memory, 2),
-                "system.python_version": platform.python_version(),
-                "system.torch_version": torch.__version__,
-            }
-        except Exception as e:
-            print(f"Failed to get system info: {e}")
-            return {}
-
-
 class Runner:
     @staticmethod
     def run_multicnngru():
@@ -316,17 +315,17 @@ class Runner:
             model=model,
             train_dataset=train_dataset,
             val_dataset=test_dataset,
-            batch_size=8,
+            batch_size=4,
             learning_rate=0.001,
             random_state=42,
             device=device,
             mlflow_uri="http://localhost:5000",
-            experiment_name="Test",
+            experiment_name="states6March-August",
         )
 
         trainer.run_training(
-            num_epochs=10,
-            patience=5,
+            num_epochs=1000,
+            patience=10,
         )
 
     @staticmethod
@@ -346,7 +345,7 @@ class Runner:
         model = RNNRegressor(
             rnn_type="GRU",
             input_size=train_dataset.X.shape[2],
-            hidden_size=200,
+            hidden_size=500,
             num_layers=2,
             dropout=0.3,
             device=device,
@@ -359,12 +358,48 @@ class Runner:
             model=model,
             train_dataset=train_dataset,
             val_dataset=test_dataset,
-            batch_size=256,
+            batch_size=16,
             learning_rate=0.001,
             random_state=42,
             device=device,
             mlflow_uri="http://localhost:5000",
-            experiment_name="IA_IL_WRF_HRRR_SENTINEL",
+            experiment_name="states6March-August",
+        )
+
+        trainer.run_training(
+            num_epochs=1000,
+            patience=10,
+        )
+
+    @staticmethod
+    def run_resnetregressor():
+        train_dataset = OneImageDataset(
+            PATH_PROCESSED / "X_train.csv",
+            PATH_PROCESSED / "y_train.csv",
+        )
+        test_dataset = OneImageDataset(
+            PATH_PROCESSED / "X_test.csv",
+            PATH_PROCESSED / "y_test.csv",
+        )
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        # Initialize model
+        model = ResNetRegressor()
+
+        print(f"Training {model.__class__.__name__} model on {device}")
+
+        # Train model
+        trainer = ModelTrainer(
+            model=model,
+            train_dataset=train_dataset,
+            val_dataset=test_dataset,
+            batch_size=32,
+            learning_rate=0.001,
+            random_state=42,
+            device=device,
+            mlflow_uri="http://localhost:5000",
+            experiment_name="States6OneImage",
         )
 
         trainer.run_training(
@@ -374,4 +409,4 @@ class Runner:
 
 
 if __name__ == "__main__":
-    Runner.run_multicnngru()
+    Runner.run_resnetregressor()
