@@ -90,3 +90,28 @@ class ImagesDataset(Dataset):
             torch.tensor(images).float(),
             torch.tensor(self.y[idx]).float(),
         )
+
+
+class OneImageDataset(Dataset):
+    def __init__(self, path_X: Path, path_y: Path):
+        X = pd.read_csv(
+            path_X, usecols=["year", "fips", "month", "day", "images"]
+        )
+        y = pd.read_csv(path_y)
+
+        data = pd.concat([X, y], axis=1).dropna()
+        data = data[(data["month"] == 6) & (data["day"] == 15)]
+        self.X = data["images"].values
+        self.y = data["yield_bu_per_acre"].values
+        self.n_samples = self.X.shape[0]
+
+    def __len__(self):
+        return self.n_samples
+
+    def __getitem__(self, idx):
+        path_image = PATH_PROCESSED / self.X[idx]
+        image = np.load(path_image)
+        return (
+            torch.tensor(image).float(),
+            torch.tensor(self.y[idx]).float(),
+        )

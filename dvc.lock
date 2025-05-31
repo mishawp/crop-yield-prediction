@@ -10,7 +10,7 @@ stages:
       nfiles: 618
     - path: src/data/integration.py
       hash: md5
-      md5: 077ad14cde3d78c75969382aa1990bc9
+      md5: 7e1bb2e2106bcccd3a91a4c370e35b92
       size: 16091
   processing:
     cmd: python -m src.data.process
@@ -34,5 +34,5 @@ stages:
       nfiles: 0
     - path: src/model/train.py
       hash: md5
-      md5: 92ba7b51df889561ade9f2454e464246
-      size: 13033
+      md5: cd3706d54f7d4748f5c37efb70a3b055
+      size: 14025
