@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from typing import Literal
-from torchvision.models import resnet18
+from torchvision.models import resnet18, efficientnet_b0
 
 
 class RNNRegressor(nn.Module):
@@ -17,11 +17,11 @@ class RNNRegressor(nn.Module):
         device="cuda",
     ):
         """
-        GRU model for regression tasks
+        RNN model for regression tasks that uses last 7 timesteps
         Args:
             input_size (int): Number of input features
             hidden_size (int): Number of hidden units
-            num_layers (int): Number of GRU layers
+            num_layers (int): Number of RNN layers
             dropout (float): Dropout probability
             device (str): Device to run on ('cuda' or 'cpu')
         """
@@ -32,6 +32,7 @@ class RNNRegressor(nn.Module):
         self.num_layers = num_layers
         self.dropout = dropout
         self.device = device
+        self.num_last_frames = 7  # Number of last frames to consider
 
         self.rnn = RNNRegressor.rnn_types[rnn_type](
             input_size,
@@ -42,7 +43,8 @@ class RNNRegressor(nn.Module):
         )
 
         # Output layer for regression (single output)
-        self.fc = nn.Linear(hidden_size, 1)
+        # Input size is now hidden_size * num_last_frames because we concatenate the last 7 frames
+        self.fc = nn.Linear(hidden_size * self.num_last_frames, 1)
 
     def forward(self, X: torch.Tensor) -> torch.Tensor:
         """
@@ -72,8 +74,11 @@ class RNNRegressor(nn.Module):
         else:
             out_rnn, _ = self.rnn(X, h_0)
 
-        # Take the last timestep output
-        out_rnn = out_rnn[:, -1, :]
+        # Take the last 7 timesteps outputs
+        out_rnn = out_rnn[:, -self.num_last_frames :, :]
+
+        # Flatten the last num_last_frames frames
+        out_rnn = out_rnn.reshape(out_rnn.size(0), -1)
 
         # Final regression output
         out_fc = self.fc(out_rnn)
@@ -133,6 +138,56 @@ class MultiCNNGRU(nn.Module):
         return output
 
 
+class MultiModalModel(nn.Module):
+    def __init__(
+        self,
+        rnn_type: Literal["RNN", "LSTM", "GRU"],
+        tabular_input_size: int,
+        image_num_frames: int = 12,
+        tabular_hidden_size: int = 200,
+        image_hidden_size: int = 128,
+        tabular_num_layers: int = 2,
+        image_num_layers: int = 1,
+        dropout: float = 0.3,
+        device="cuda",
+    ):
+        super(MultiModalModel, self).__init__()
+        self.device = device
+
+        # Модель для табличных данных
+        self.tabular_model = RNNRegressor(
+            rnn_type=rnn_type,
+            input_size=tabular_input_size,
+            hidden_size=tabular_hidden_size,
+            num_layers=tabular_num_layers,
+            dropout=dropout,
+            device=device,
+        )
+
+        # Модель для изображений
+        self.image_model = MultiCNNGRU(
+            num_frames=image_num_frames,
+            hidden_size=image_hidden_size,
+            num_layers=image_num_layers,
+        )
+
+        # Объединяющий слой
+        self.combine_fc = nn.Linear(2, 1)  # Объединяем 2 выхода в 1
+
+    def forward(self, tabular_data, image_data):
+        # Обработка табличных данных
+        tabular_out = self.tabular_model(tabular_data)
+
+        # Обработка изображений
+        image_out = self.image_model(image_data)
+
+        # Объединение результатов
+        combined = torch.cat([tabular_out, image_out], dim=1)
+        output = self.combine_fc(combined)
+
+        return output
+
+
 class ResNetRegressor(nn.Module):
     def __init__(self):
         super().__init__()
@@ -151,4 +206,31 @@ class ResNetRegressor(nn.Module):
         # x.shape = [batch_size, C, H, W] - одно изображение
         features = self.resnet(x)
         output = self.fc(features)
+        return output
+
+
+class EfficientNetRegressor(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        # Загружаем EfficientNet-B0 из torchvision
+        self.efficientnet = efficientnet_b0()
+
+        # Удаляем классификационную головку (она включает avgpool и classifier)
+        # Оставляем только features (conv layers)
+        self.features = self.efficientnet.features
+
+        # Добавляем свои слои для регрессии
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.flatten = nn.Flatten()
+
+        # Для EfficientNet-B0 выход features имеет 1280 каналов
+        self.fc = nn.Linear(1280, 1)
+
+    def forward(self, x):
+        # x.shape = [batch_size, 3, 512, 512]
+        features = self.features(x)  # [batch_size, 1280, H', W']
+        pooled = self.avgpool(features)  # [batch_size, 1280, 1, 1]
+        flattened = self.flatten(pooled)  # [batch_size, 1280]
+        output = self.fc(flattened)  # [batch_size, 1]
         return output
