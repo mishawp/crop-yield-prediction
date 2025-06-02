@@ -92,6 +92,61 @@ class ImagesDataset(Dataset):
         )
 
 
+class MultiModalDataset(Dataset):
+    def __init__(self, path_X: Path, path_y: Path):
+        X = pd.read_csv(path_X)
+        y = pd.read_csv(path_y)
+
+        data = pd.concat([X, y], axis=1)
+
+        # Группируем по year и fips
+        grouped = data.groupby(["year", "fips"])
+        self.n_samples = len(grouped)
+
+        # Собираем группы в списки
+        X_tabular_groups = [None] * self.n_samples
+        X_image_groups = [None] * self.n_samples
+        y_groups = [None] * self.n_samples
+
+        for i, ((year, fips), group) in enumerate(grouped):
+            # Табличные данные
+            X_tabular = group.drop(
+                ["month", "day", "yield_bu_per_acre", "images"], axis=1
+            ).values
+
+            # Данные изображений
+            X_image = group["images"].dropna().values
+
+            # Целевая переменная
+            y_value = group["yield_bu_per_acre"].iloc[0]
+
+            X_tabular_groups[i] = X_tabular
+            X_image_groups[i] = X_image
+            y_groups[i] = y_value
+
+        # Преобразуем списки в numpy массивы
+        self.X_tabular = np.array(X_tabular_groups)
+        self.X_image = np.array(X_image_groups)
+        self.y = np.array(y_groups)
+
+    def __len__(self):
+        return self.n_samples
+
+    def __getitem__(self, idx):
+        # Загрузка табличных данных
+        tabular_data = torch.tensor(self.X_tabular[idx]).float()
+
+        # Загрузка изображений
+        paths_images = PATH_PROCESSED / self.X_image[idx]
+        images = np.array([np.load(path) for path in paths_images])
+        image_data = torch.tensor(images).float()
+
+        # Целевая переменная
+        target = torch.tensor(self.y[idx]).float()
+
+        return (tabular_data, image_data), target
+
+
 class OneImageDataset(Dataset):
     def __init__(self, path_X: Path, path_y: Path):
         X = pd.read_csv(
@@ -100,7 +155,7 @@ class OneImageDataset(Dataset):
         y = pd.read_csv(path_y)
 
         data = pd.concat([X, y], axis=1).dropna()
-        data = data[(data["month"] == 6) & (data["day"] == 15)]
+        data = data[(data["month"] == 8) & (data["day"] == 15)]
         self.X = data["images"].values
         self.y = data["yield_bu_per_acre"].values
         self.n_samples = self.X.shape[0]

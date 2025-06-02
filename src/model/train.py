@@ -8,8 +8,19 @@ import numpy as np
 from torch import nn
 from torch.utils.data import Dataset, DataLoader
 from sklearn.metrics import mean_squared_error, r2_score
-from src.data.dataset import TabularDataset, ImagesDataset, OneImageDataset
-from src.model.models import RNNRegressor, MultiCNNGRU, ResNetRegressor
+from src.data.dataset import (
+    TabularDataset,
+    ImagesDataset,
+    OneImageDataset,
+    MultiModalDataset,
+)
+from src.model.models import (
+    RNNRegressor,
+    MultiCNNGRU,
+    ResNetRegressor,
+    EfficientNetRegressor,
+    MultiModalModel,
+)
 from tqdm import tqdm
 from pathlib import Path
 import mlflow
@@ -288,6 +299,68 @@ class ModelTrainer:
         np.random.seed(seed)
 
 
+class MultiModalTrainer(ModelTrainer):
+    def train_epoch(self) -> tuple[float, float]:
+        """Одна эпоха обучения для мультимодальной модели."""
+        self.model.train()
+        train_preds, train_targets = [], []
+
+        for (tabular_batch, image_batch), y_batch in tqdm(
+            self.train_loader, desc="Training", leave=False
+        ):
+            # Перенос данных на устройство
+            tabular_batch = tabular_batch.to(self.device)
+            image_batch = image_batch.to(self.device)
+            y_batch = y_batch.to(self.device)
+
+            self.optimizer.zero_grad()
+
+            # Прямой проход через модель
+            outputs = self.model(tabular_batch, image_batch)
+
+            # Вычисление потерь
+            loss = self.criterion(outputs.squeeze(), y_batch)
+
+            # Обратное распространение и обновление весов
+            loss.backward()
+            self.optimizer.step()
+
+            # Сохранение предсказаний и целевых значений для метрик
+            train_preds.extend(outputs.detach().cpu().numpy().flatten())
+            train_targets.extend(y_batch.cpu().numpy().flatten())
+
+        # Вычисление метрик
+        rmse = np.sqrt(mean_squared_error(train_targets, train_preds))
+        r2 = r2_score(train_targets, train_preds)
+
+        return r2, rmse
+
+    def validate(self) -> tuple[float, float]:
+        """Валидация для мультимодальной модели."""
+        self.model.eval()
+        val_preds, val_targets = [], []
+
+        with torch.no_grad():
+            for (tabular_batch, image_batch), y_batch in self.val_loader:
+                # Перенос данных на устройство
+                tabular_batch = tabular_batch.to(self.device)
+                image_batch = image_batch.to(self.device)
+                y_batch = y_batch.to(self.device)
+
+                # Прямой проход через модель
+                outputs = self.model(tabular_batch, image_batch)
+
+                # Сохранение предсказаний и целевых значений
+                val_preds.extend(outputs.cpu().numpy().flatten())
+                val_targets.extend(y_batch.cpu().numpy().flatten())
+
+        # Вычисление метрик
+        rmse = np.sqrt(mean_squared_error(val_targets, val_preds))
+        r2 = r2_score(val_targets, val_preds)
+
+        return r2, rmse
+
+
 class Runner:
     @staticmethod
     def run_multicnngru():
@@ -304,7 +377,7 @@ class Runner:
 
         model = MultiCNNGRU(
             num_frames=train_dataset.X.shape[1],
-            hidden_size=200,
+            hidden_size=512,
             num_layers=1,
         )
 
@@ -407,6 +480,87 @@ class Runner:
             patience=10,
         )
 
+    @staticmethod
+    def run_efficientnetregressor():
+        train_dataset = OneImageDataset(
+            PATH_PROCESSED / "X_train.csv",
+            PATH_PROCESSED / "y_train.csv",
+        )
+        test_dataset = OneImageDataset(
+            PATH_PROCESSED / "X_test.csv",
+            PATH_PROCESSED / "y_test.csv",
+        )
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        # Initialize model
+        model = EfficientNetRegressor()
+
+        print(f"Training {model.__class__.__name__} model on {device}")
+
+        # Train model
+        trainer = ModelTrainer(
+            model=model,
+            train_dataset=train_dataset,
+            val_dataset=test_dataset,
+            batch_size=8,
+            learning_rate=0.001,
+            random_state=42,
+            device=device,
+            mlflow_uri="http://localhost:5000",
+            experiment_name="States6OneImage",
+        )
+
+        trainer.run_training(
+            num_epochs=1000,
+            patience=10,
+        )
+
+    @staticmethod
+    def run_multimodalmodel():
+        train_dataset = MultiModalDataset(
+            PATH_PROCESSED / "X_train.csv",
+            PATH_PROCESSED / "y_train.csv",
+        )
+        test_dataset = MultiModalDataset(
+            PATH_PROCESSED / "X_test.csv",
+            PATH_PROCESSED / "y_test.csv",
+        )
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        model = MultiModalModel(
+            rnn_type="GRU",
+            tabular_input_size=train_dataset.X_tabular.shape[2],
+            tabular_hidden_size=200,
+            tabular_num_layers=2,
+            image_num_frames=train_dataset.X_image.shape[1],
+            image_hidden_size=512,
+            image_num_layers=1,
+            dropout=0.3,
+            device=device,
+        )
+
+        print(f"Training {model.__class__.__name__} model on {device}")
+
+        # Train model
+        trainer = MultiModalTrainer(
+            model=model,
+            train_dataset=train_dataset,
+            val_dataset=test_dataset,
+            batch_size=4,
+            learning_rate=0.001,
+            random_state=42,
+            device=device,
+            mlflow_uri="http://localhost:5000",
+            experiment_name="MultiModal",
+        )
+
+        trainer.run_training(
+            num_epochs=1000,
+            patience=10,
+        )
+
 
 if __name__ == "__main__":
-    Runner.run_resnetregressor()
+    Runner.run_multimodalmodel()
