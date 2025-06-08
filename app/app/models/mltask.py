@@ -28,7 +28,6 @@ class MLTaskBase(SQLModel):
 
     status: TaskStatus = Field(default=TaskStatus.NEW)
     result: Optional[str] = Field(default=None)
-    file_path: Optional[str] = Field(default=None)
 
 
 class MLTask(MLTaskBase, table=True):
@@ -37,7 +36,6 @@ class MLTask(MLTaskBase, table=True):
 
     Атрибуты:
         id (int): Уникальный идентификатор задачи
-        event_id (int): ID связанного события
         user_id (int): ID пользователя, создавшего задачу
         created_at (datetime): Время создания задачи
         updated_at (datetime): Время последнего обновления
@@ -46,7 +44,7 @@ class MLTask(MLTaskBase, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="user.id")
-    fips_code: int = Field(default=None)
+    file: Optional[str] = Field(default=None)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
@@ -62,7 +60,7 @@ class MLTask(MLTaskBase, table=True):
         """Формирует сообщение для отправки в RabbitMQ"""
         return {
             "task_id": self.id,
-            "question": self.file_path,
+            "file": self.file,
         }
 
 
@@ -76,6 +74,6 @@ class MLTaskCreate(MLTaskBase):
 class MLTaskUpdate(MLTaskBase):
     """DTO для обновления существующей ML задачи"""
 
-    file_path: Optional[str] = None
     status: Optional[TaskStatus] = None
     result: Optional[str] = None
+    file: Optional[str] = None

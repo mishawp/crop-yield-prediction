@@ -1,11 +1,12 @@
 from dataclasses import dataclass
 import pika
 
+
 @dataclass
 class RabbitMQConfig:
     """
     Конфигурационные параметры для подключения к RabbitMQ.
-    
+
     Атрибуты:
         host: Адрес сервера RabbitMQ
         port: Порт для подключения
@@ -17,19 +18,19 @@ class RabbitMQConfig:
         heartbeat: Интервал проверки соединения в секундах
         connection_timeout: Таймаут подключения в секундах
     """
+
     # Параметры подключения
-    host: str = 'rabbitmq'
+    host: str = "rabbitmq"
     port: int = 5672
-    virtual_host: str = '/'
-    
+    virtual_host: str = "/"
+
     # Параметры аутентификации
-    username: str = 'rmuser'
-    password: str = 'rmpassword'
-    
+    username: str = "rmuser"
+    password: str = "rmpassword"
+
     # Параметры очередей
-    queue_name: str = 'ml_task_queue'
-    rpc_queue_name: str = 'rpc_queue'
-    
+    queue_name: str = "ml_task_queue"
+
     # Параметры соединения
     heartbeat: int = 30
     connection_timeout: int = 2
@@ -41,9 +42,8 @@ class RabbitMQConfig:
             port=self.port,
             virtual_host=self.virtual_host,
             credentials=pika.PlainCredentials(
-                username=self.username,
-                password=self.password
+                username=self.username, password=self.password
             ),
             heartbeat=self.heartbeat,
-            blocked_connection_timeout=self.connection_timeout
+            blocked_connection_timeout=self.connection_timeout,
         )

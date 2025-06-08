@@ -271,7 +271,7 @@ class ModelTrainer:
                 model_path = PATH_MODELS / (
                     f"{self.model.__class__.__name__}_"
                     f"{datetime.now().strftime('%Y%m%d_%H%M')}_"
-                    f"r2_{val_r2:.4f}.pth"
+                    f"r2_{best_val_r2:.4f}.pth"
                 )
                 torch.save(
                     self.model.state_dict(),

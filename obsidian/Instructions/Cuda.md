@@ -29,3 +29,14 @@ sudo apt update
 ## Установка cuda
 
 https://developer.nvidia.com/cuda-downloads?target_os=Linux&target_arch=x86_64&Distribution=Ubuntu&target_version=24.04&target_type=deb_network
+
+## Docker
+https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
+
+## Docker Compose
+дописать runtime: nvidia в сервис
+```yml
+ml_worker:
+  runtime: nvidia
+```
+

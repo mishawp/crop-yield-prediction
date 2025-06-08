@@ -1,6 +1,5 @@
 from rmq.rmqconf import RabbitMQConfig
 from rmq.rmqworker import MLWorker
-from rmq.rpcworker import RPCWorker
 import sys
 import pika
 import time
@@ -19,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 def create_worker(mode: str, config: RabbitMQConfig):
     """Create appropriate worker instance based on mode."""
-    return MLWorker(config) if mode == "ml" else RPCWorker(config)
+    return MLWorker(config)
 
 
 def run_worker(worker):
@@ -45,7 +44,7 @@ def run_worker(worker):
 
 
 def main():
-    mode = "ml"  # Можно использовать rpc
+    mode = "ml"
     logger.info(f"Starting worker in {mode} mode")
 
     worker = None

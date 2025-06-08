@@ -1,15 +1,23 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Request,
+    Response,
+    status,
+)
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.templating import Jinja2Templates
+from sqlmodel import Session
 from auth.authenticate import authenticate_cookie, authenticate
 from auth.hash_password import HashPassword
 from auth.jwt_handler import create_access_token
 from database.database import get_session
 from services.auth.loginform import LoginForm
-from services.crud import user as UsersService
+from services.crud.user import UserService
 from database.config import get_settings
-from typing import Dict
+from typing import Annotated
 
 # Получаем настройки приложения
 settings = get_settings()
@@ -20,8 +28,17 @@ hash_password = HashPassword()
 # Инициализируем шаблонизатор Jinja2
 templates = Jinja2Templates(directory="view")
 
+
+def get_user_service(session: Session = Depends(get_session)) -> UserService:
+    return UserService(session)
+
+
 @auth_route.post("/token")
-async def login_for_access_token(response: Response, form_data: OAuth2PasswordRequestForm=Depends(), session=Depends(get_session)) -> dict[str, str]:
+async def login_for_access_token(
+    response: Response,
+    form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
+    user_service: Annotated[UserService, Depends(get_user_service)],
+) -> dict[str, str]:
     """
     Создает access token для аутентифицированного пользователя.
 
@@ -36,30 +53,33 @@ async def login_for_access_token(response: Response, form_data: OAuth2PasswordRe
     Raises:
         HTTPException: 404 если пользователь не найден
         HTTPException: 401 если неверные учетные данные
-    """    
+    """
     # Проверяем существование пользователя по email
-    user_exist = UsersService.get_user_by_email(form_data.username, session)
+    user_exist = user_service.get_user_by_email(form_data.username)
     if user_exist is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User does not exist")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User does not exist"
+        )
+
     # Проверяем правильность пароля
     if hash_password.verify_hash(form_data.password, user_exist.password):
         # Создаем JWT токен
         access_token = create_access_token(user_exist.email)
         # Устанавливаем токен в cookie
         response.set_cookie(
-            key=settings.COOKIE_NAME, 
-            value=f"Bearer {access_token}", 
-            httponly=True
+            key=settings.COOKIE_NAME,
+            value=f"Bearer {access_token}",
+            httponly=True,
         )
-        
+
         # Возвращаем токен в ответе
         return {settings.COOKIE_NAME: access_token, "token_type": "bearer"}
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid details passed."
+        detail="Invalid details passed.",
     )
+
 
 @auth_route.get("/login", response_class=HTMLResponse)
 async def login_get(request: Request):
@@ -77,9 +97,13 @@ async def login_get(request: Request):
         "request": request,
     }
     return templates.TemplateResponse("login.html", context)
-    
+
+
 @auth_route.post("/login", response_class=HTMLResponse)
-async def login_post(request: Request, session=Depends(get_session)):
+async def login_post(
+    request: Request,
+    user_service: Annotated[UserService, Depends(get_user_service)],
+):
     """
     Обрабатывает отправку формы входа.
 
@@ -98,7 +122,9 @@ async def login_post(request: Request, session=Depends(get_session)):
         try:
             # При успешной валидации перенаправляем на главную
             response = RedirectResponse("/", status.HTTP_302_FOUND)
-            await login_for_access_token(response=response, form_data=form, session=session)
+            await login_for_access_token(
+                response=response, form_data=form, user_service=user_service
+            )
             form.__dict__.update(msg="Login Successful!")
             print("[green]Login successful!!!!")
             return response
@@ -108,6 +134,7 @@ async def login_post(request: Request, session=Depends(get_session)):
             form.__dict__.get("errors").append("Incorrect Email or Password")
             return templates.TemplateResponse("login.html", form.__dict__)
     return templates.TemplateResponse("login.html", form.__dict__)
+
 
 @auth_route.get("/logout", response_class=HTMLResponse)
 async def login_get():

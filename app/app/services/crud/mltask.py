@@ -13,7 +13,6 @@ class MLTaskService:
         """Создает новую ML задачу"""
         task = MLTask(
             status=task_create.status,
-            file_path=task_create.question,
             user_id=task_create.user_id,
         )
         self.session.add(task)
@@ -67,3 +66,7 @@ class MLTaskService:
         return self.update(
             task_id, MLTaskUpdate(status=TaskStatus.COMPLETED, result=result)
         )
+
+    def set_file(self, task_id: int, file: str) -> Optional[MLTask]:
+        """Устанавливает имя прикрепленного файла"""
+        return self.update(task_id, MLTaskUpdate(file=file))

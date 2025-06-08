@@ -42,7 +42,7 @@ async def index(request: Request):
 
 @home_route.get("/private", response_class=HTMLResponse)
 async def index_private(
-    request: Request, user: str = Depends(authenticate_cookie)
+    request: Request, username: str = Depends(authenticate_cookie)
 ):
     """
     Приватная страница, доступная только авторизованным пользователям через cookie.
@@ -54,7 +54,7 @@ async def index_private(
     Returns:
         HTMLResponse: Приватная HTML страница
     """
-    context = {"user": user, "request": request}
+    context = {"user": username, "request": request}
     return templates.TemplateResponse("private.html", context)
 
 

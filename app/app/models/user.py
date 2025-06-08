@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 import re
 
 if TYPE_CHECKING:
-    from models.event import Event
     from models.mltask import MLTask
 
 
@@ -37,19 +36,11 @@ class User(UserBase, table=True):
     Атрибуты:
         id (int): Первичный ключ
         created_at (datetime): Дата создания аккаунта
-        events (List[Event]): Список событий пользователя
     """
 
     id: Optional[int] = Field(default=None, primary_key=True)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
-    )
-    events: List["Event"] = Relationship(
-        back_populates="creator",
-        sa_relationship_kwargs={
-            "cascade": "all, delete-orphan",
-            "lazy": "selectin",
-        },
     )
     ml_tasks: List["MLTask"] = Relationship(
         back_populates="creator", sa_relationship_kwargs={"lazy": "selectin"}
@@ -76,10 +67,10 @@ class User(UserBase, table=True):
             raise ValueError("Неверный формат электронной почты")
         return True
 
-    @property
-    def event_count(self) -> int:
-        """Количество событий, связанных с пользователем"""
-        return len(self.events)
+    # @property
+    # def event_count(self) -> int:
+    #     """Количество событий, связанных с пользователем"""
+    #     return len(self.events)
 
 
 class UserCreate(UserBase):

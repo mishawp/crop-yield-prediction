@@ -23,22 +23,23 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
-  # ml_worker:
-  #   build: ./ml_worker/
-  #   image: crop-predictor-ml-worker:latest
-  #   container_name: crop-predictor-ml-worker
-  #   restart: unless-stopped
-
-  #   volumes:
-  #     - ./ml_worker:/app
-  #     - files:/app/files
-  #   depends_on:
-  #     db:
-  #       condition: service_started
-  #     rabbitmq:
-  #       condition: service_healthy
-  #   networks:
-  #     - crop-predictor-network
+  ml_worker:
+    build: ./ml_worker/
+    image: crop-predictor-ml-worker:latest
+    container_name: crop-predictor-ml-worker
+    restart: unless-stopped
+    runtime: nvidia
+    volumes:
+      - ./ml_worker:/app
+      - files:/app/files
+      - ../models/:/app/models/
+    depends_on:
+      db:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - crop-predictor-network
   web:
     image: nginx:alpine3.21
     container_name: crop-predictor-nginx
@@ -67,7 +68,7 @@ services:
       - crop-predictor-network
   rabbitmq:
     image: rabbitmq:3.13.1-management-alpine
-    container_name: rabbitmq_for_planner
+    container_name: crop-predictor-rabbitmq
     hostname: rabbitmq
     restart: unless-stopped
     environment:

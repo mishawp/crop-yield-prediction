@@ -1,107 +1,111 @@
 from models.user import User, UserCreate
-from models.event import Event
+from models.mltask import MLTask
 from sqlmodel import Session, select
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
 
-def get_all_users(session: Session) -> List[User]:
-    """
-    Получить всех пользователей с их событиями.
-    
-    Аргументы:
-        session: Сессия базы данных
-    
-    Возвращает:
-        List[User]: Список всех пользователей
-    """
-    try:
-        statement = select(User).options(
-            selectinload(User.events).selectinload(Event.creator)
-        )
-        users = session.exec(statement).all()
-        return users
-    except Exception as e:
-        raise
 
-def get_user_by_id(user_id: int, session: Session) -> Optional[User]:
-    """
-    Получить пользователя по ID.
-    
-    Аргументы:
-        user_id: ID пользователя для поиска
-        session: Сессия базы данных
-    
-    Возвращает:
-        Optional[User]: Найденный пользователь или None
-    """
-    try:
-        statement = select(User).where(User.id == user_id).options(
-            selectinload(User.events)
-        )
-        user = session.exec(statement).first()
-        return user
-    except Exception as e:
-        raise
+class UserService:
+    def __init__(self, session: Session):
+        self.session = session
 
-def get_user_by_email(email: str, session: Session) -> Optional[User]:
-    """
-    Получить пользователя по email.
-    
-    Аргументы:
-        email: Email для поиска
-        session: Сессия базы данных
-    
-    Возвращает:
-        Optional[User]: Найденный пользователь или None
-    """
-    try:
-        statement = select(User).where(User.email == email).options(
-            selectinload(User.events)
-        )
-        user = session.exec(statement).first()
-        return user
-    except Exception as e:
-        raise
+    def get_all_users(self) -> List[User]:
+        """
+        Получить всех пользователей с их событиями.
 
-def create_user(user: UserCreate, session: Session) -> User:
-    """
-    Создать нового пользователя.
-    
-    Аргументы:
-        user: DTO для создания пользователя
-        session: Сессия базы данных
-    
-    Возвращает:
-        User: Созданный пользователь с ID
-    """
-    db_user = User.from_orm(user)
-    try:
-        session.add(db_user)
-        session.commit()
-        session.refresh(db_user)
-        return db_user
-    except Exception as e:
-        session.rollback()
-        raise
+        Возвращает:
+            List[User]: Список всех пользователей
+        """
+        try:
+            statement = select(User).options(
+                selectinload(User.ml_tasks).selectinload(MLTask.creator)
+            )
+            users = self.session.exec(statement).all()
+            return users
+        except Exception as e:
+            raise
 
-def delete_user(user_id: int, session: Session) -> bool:
-    """
-    Удалить пользователя по ID.
-    
-    Аргументы:
-        user_id: ID пользователя для удаления
-        session: Сессия базы данных
-    
-    Возвращает:
-        bool: True если удален, False если не найден
-    """
-    try:
-        user = get_user_by_id(user_id, session)
-        if user:
-            session.delete(user)
-            session.commit()
-            return True
-        return False
-    except Exception as e:
-        session.rollback()
-        raise
+    def get_user_by_id(self, user_id: int) -> Optional[User]:
+        """
+        Получить пользователя по ID.
+
+        Аргументы:
+            user_id: ID пользователя для поиска
+
+        Возвращает:
+            Optional[User]: Найденный пользователь или None
+        """
+        try:
+            statement = (
+                select(User)
+                .where(User.id == user_id)
+                .options(selectinload(User.ml_tasks))
+            )
+            user = self.session.exec(statement).first()
+            return user
+        except Exception as e:
+            raise
+
+    def get_user_by_email(self, email: str) -> Optional[User]:
+        """
+        Получить пользователя по email.
+
+        Аргументы:
+            email: Email для поиска
+
+        Возвращает:
+            Optional[User]: Найденный пользователь или None
+        """
+        try:
+            statement = (
+                select(User)
+                .where(User.email == email)
+                .options(selectinload(User.ml_tasks))
+            )
+            user = self.session.exec(statement).first()
+            return user
+        except Exception as e:
+            raise
+
+    def create_user(self, user: UserCreate) -> User:
+        """
+        Создать нового пользователя.
+
+        Аргументы:
+            user: DTO для создания пользователя
+
+        Возвращает:
+            User: Созданный пользователь с ID
+        """
+        db_user = User.from_orm(user)
+        try:
+            self.session.add(db_user)
+            self.session.commit()
+            self.session.refresh(db_user)
+            return db_user
+        except Exception as e:
+            self.session.rollback()
+            raise
+
+    def delete_user(self, user_id: int) -> bool:
+        """
+        Удалить пользователя по ID.
+
+        Аргументы:
+            user_id: ID пользователя для удаления
+
+        Возвращает:
+            bool: True если удален, False если не найден
+        """
+        try:
+            user = self.get_user_by_id(
+                user_id,
+            )
+            if user:
+                self.session.delete(user)
+                self.session.commit()
+                return True
+            return False
+        except Exception as e:
+            self.session.rollback()
+            raise
