@@ -26,8 +26,8 @@ services:
   ml_worker:
     build: ./ml_worker/
     image: crop-predictor-ml-worker:latest
-    container_name: crop-predictor-ml-worker
     restart: unless-stopped
+    scale: 2
     runtime: nvidia
     volumes:
       - ./ml_worker:/app

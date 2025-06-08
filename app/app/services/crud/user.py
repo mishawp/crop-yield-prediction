@@ -1,3 +1,4 @@
+from auth.hash_password import HashPassword
 from models.user import User, UserCreate
 from models.mltask import MLTask
 from sqlmodel import Session, select
@@ -6,6 +7,8 @@ from typing import List, Optional
 
 
 class UserService:
+    hash_password = HashPassword()
+
     def __init__(self, session: Session):
         self.session = session
 
@@ -77,6 +80,7 @@ class UserService:
         Возвращает:
             User: Созданный пользователь с ID
         """
+        user.password = self.hash_password.create_hash(user.password)
         db_user = User.from_orm(user)
         try:
             self.session.add(db_user)
