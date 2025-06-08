@@ -31,16 +31,24 @@ async def index(request: Request):
         HTMLResponse: HTML страница с контекстом пользователя
     """
     token = request.cookies.get(settings.COOKIE_NAME)
-    if token:
-        user = await authenticate_cookie(token)
-    else:
+    if not token:
         user = None
+    else:
+        try:
+            user = await authenticate_cookie(token)
+        except HTTPException as e:
+            # Если токен невалидный (просрочен или ошибка верификации),
+            # просто считаем пользователя неавторизованным
+            if e.detail == "Token expired!" or "Invalid token":
+                user = None
+            else:
+                raise  # Если другая ошибка - пробрасываем её
 
     context = {"user": user, "request": request}
     return templates.TemplateResponse("index.html", context)
 
 
-@home_route.get("/private", response_class=HTMLResponse)
+@home_route.get("/predict", response_class=HTMLResponse)
 async def index_private(
     request: Request, username: str = Depends(authenticate_cookie)
 ):
@@ -55,22 +63,7 @@ async def index_private(
         HTMLResponse: Приватная HTML страница
     """
     context = {"user": username, "request": request}
-    return templates.TemplateResponse("private.html", context)
-
-
-@home_route.get("/private2")
-async def index_private2(request: Request, user: str = Depends(authenticate)):
-    """
-    Приватный API эндпоинт, доступный только авторизованным пользователям.
-
-    Args:
-        request (Request): Объект запроса FastAPI
-        user (str): Информация о пользователе из заголовка авторизации
-
-    Returns:
-        dict: Словарь с информацией о пользователе
-    """
-    return {"user": user}
+    return templates.TemplateResponse("predict.html", context)
 
 
 @home_route.get(

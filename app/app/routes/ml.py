@@ -1,7 +1,16 @@
 import logging
 from pathlib import Path
 from typing import Dict, List
-from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
+from fastapi import (
+    APIRouter,
+    Request,
+    HTTPException,
+    UploadFile,
+    File,
+    Depends,
+)
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 from sqlmodel import Session
 from database.database import get_session
 from models.mltask import MLTask, TaskStatus, MLTaskCreate, MLTaskUpdate
@@ -16,6 +25,7 @@ logging.getLogger("pika").setLevel(logging.INFO)
 logger = get_logger(logger_name=__name__)
 
 ml_route = APIRouter()
+templates = Jinja2Templates(directory="view")
 UPLOAD_DIR = Path("files")
 shared_queue = {}
 
@@ -138,17 +148,21 @@ def send_task_result(
         )
 
 
-@ml_route.get("/tasks", response_model=List[MLTask])
+@ml_route.get("/tasks", response_class=HTMLResponse)
 async def get_all_tasks(
+    request: Request,
     username: str = Depends(authenticate_cookie),
     mltask_service: MLTaskService = Depends(get_mltask_service),
     user_service: UserService = Depends(get_user_service),
 ):
-    """Get all ML tasks for user"""
-    return mltask_service.get_all()
+    user = user_service.get_user_by_email(username)
+    ml_tasks = user.ml_tasks
+    ml_tasks.sort(key=lambda x: x.created_at)
+    context = {"user": user, "ml_tasks": ml_tasks, "request": request}
+    return templates.TemplateResponse("history.html", context)
 
 
-@ml_route.get("/tasks/{task_id}", response_model=MLTask)
+@ml_route.get("/tasks/{task_id}", response_class=HTMLResponse)
 async def get_task(
     task_id: int, mltask_service: MLTaskService = Depends(get_mltask_service)
 ):

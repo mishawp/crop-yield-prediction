@@ -15,6 +15,7 @@ from auth.hash_password import HashPassword
 from auth.jwt_handler import create_access_token
 from database.database import get_session
 from services.auth.loginform import LoginForm
+from models.user import UserCreate
 from services.crud.user import UserService
 from database.config import get_settings
 from typing import Annotated
@@ -99,7 +100,7 @@ async def login_get(request: Request):
     return templates.TemplateResponse("login.html", context)
 
 
-@auth_route.post("/login", response_class=HTMLResponse)
+@auth_route.post("/login", response_model=None)
 async def login_post(
     request: Request,
     user_service: Annotated[UserService, Depends(get_user_service)],
@@ -109,7 +110,7 @@ async def login_post(
 
     Args:
         request (Request): Объект HTTP-запроса
-        session (Session): Сессия базы данных
+        user_service (UserService): UserService
 
     Returns:
         Response: Перенаправление на главную страницу при успехе
@@ -118,26 +119,62 @@ async def login_post(
     # Создаем и валидируем форму входа
     form = LoginForm(request)
     await form.load_data()
-    if await form.is_valid():
-        try:
-            # При успешной валидации перенаправляем на главную
-            response = RedirectResponse("/", status.HTTP_302_FOUND)
-            await login_for_access_token(
-                response=response, form_data=form, user_service=user_service
-            )
-            form.__dict__.update(msg="Login Successful!")
-            print("[green]Login successful!!!!")
-            return response
-        except HTTPException:
-            # При ошибке аутентификации показываем сообщение об ошибке
-            form.__dict__.update(msg="")
-            form.__dict__.get("errors").append("Incorrect Email or Password")
-            return templates.TemplateResponse("login.html", form.__dict__)
-    return templates.TemplateResponse("login.html", form.__dict__)
+    if not await form.is_valid():
+        return {"errors": form.errors}
+
+    try:
+        # При успешной валидации перенаправляем на главную
+        response = RedirectResponse("/", status.HTTP_302_FOUND)
+        await login_for_access_token(
+            response=response, form_data=form, user_service=user_service
+        )
+        form.__dict__.update(msg="Login Successful!")
+        print("[green]Login successful!!!!")
+        return response
+    except HTTPException:
+        # При ошибке аутентификации показываем сообщение об ошибке
+        form.__dict__.update(msg="")
+        form.__dict__.get("errors").append("Incorrect Email or Password")
+        return {"errors": form.errors}
 
 
-@auth_route.get("/logout", response_class=HTMLResponse)
-async def login_get():
+@auth_route.post("/signup", response_model=None)
+async def signup_post(
+    request: Request,
+    user_service: Annotated[UserService, Depends(get_user_service)],
+):
+    """
+    Обрабатывает отправку формы регистрации.
+
+    Args:
+        request (Request): Объект HTTP-запроса
+        user_service (UserService): UserService
+
+    Returns:
+        Response: Перенаправление на главную страницу при успехе
+        или HTML-страница с ошибками при неудаче
+    """
+    form = LoginForm(request)
+    await form.load_data()
+    if not await form.is_valid():
+        return {"errors": form.errors}
+    if user_service.get_user_by_email(form.username):
+        return {"errors": ["Пользователь с таким email уже существует"]}
+
+    user_service.create_user(
+        UserCreate(email=form.username, password=form.password)
+    )
+    response = RedirectResponse("/", status.HTTP_302_FOUND)
+    await login_for_access_token(
+        response=response,
+        form_data=form,
+        user_service=user_service,
+    )
+    return response
+
+
+@auth_route.get("/logout")
+async def login_get() -> RedirectResponse:
     """
     Выполняет выход пользователя из системы.
 

@@ -1,37 +1,92 @@
-{% extends "base.html" %}
+{% block title %} Прогноз Урожайности | Главная {% endblock %} {% block head %}
+<style type="text/css">
+  .hero {
+    background: linear-gradient(135deg, #4caf50, #2e7d32);
+    color: white;
+    padding: 4rem 2rem;
+    border-radius: 16px;
+    margin-bottom: 3rem;
+    text-align: center;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+  }
 
-{% block title %}
-Home page!!!
-{% endblock %}
+  .nav-card {
+    transition: transform 0.3s, box-shadow 0.3s;
+    border-radius: 16px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+  }
 
-{% block head %}
-    {{ super() }}
-    <style type="text/css">
-        .important { color: #336699; }
-    </style>
-{% endblock %}
+  .nav-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+  }
 
-{% block content %}
-<h1>Home page! 🏡</h1>
+  .btn-outline-secondary {
+    border-radius: 8px;
+  }
 
-<p class="important">
-    Welcome to my awesome homepage.
-</p>
+  .card-title {
+    font-size: 1.3rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+  }
 
-{% if user %}
-    <h2>You are logged in :)</h2>
-    <p>
-        Hi {{ user }}! You are logged in, so you can access the private 
-        page. <a href="/private">here</a>!
-    </p>
-{% else %}
-    <h2>You are NOT logged in :(</h2>
-    <p>
-        Hello stranger. You are not logged. Please follow the link to
-        <a href="/auth/login" class="btn">login</a>!
-    </p>
-{% endif %}
+  .card-text {
+    color: #555;
+    margin-bottom: 1.25rem;
+  }
+</style>
+{% endblock %} {% block content %}
+<div class="container">
+  <div class="hero">
+    <h1 class="display-4">🌾 Прогноз Урожайности</h1>
+    <p class="lead">Точные прогнозы с использованием машинного обучения</p>
+  </div>
 
-<hr>
+  <div class="row">
+    {% if user %}
+    <div class="col-md-4 mb-4">
+      <div class="card nav-card h-100">
+        <div class="card-body text-center">
+          <h5 class="card-title">📊 Сделать прогноз</h5>
+          <p class="card-text">
+            Отправьте данные для получения прогноза урожайности
+          </p>
+          <a href="/predict" class="btn btn-primary">Перейти</a>
+        </div>
+      </div>
+    </div>
 
+    <div class="col-md-4 mb-4">
+      <div class="card nav-card h-100">
+        <div class="card-body text-center">
+          <h5 class="card-title">🕒 История</h5>
+          <p class="card-text">Просмотреть предыдущие запросы и результаты</p>
+          <a href="/api/ml/tasks" class="btn btn-primary">Открыть</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-4 mb-4">
+      <div class="card nav-card h-100">
+        <div class="card-body text-center">
+          <h5 class="card-title">🚪 Выйти</h5>
+          <p class="card-text">Завершить сеанс и выйти из системы</p>
+          <a href="/auth/logout" class="btn btn-outline-secondary">Выйти</a>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="col-md-6 offset-md-3 mb-4">
+      <div class="card nav-card h-100">
+        <div class="card-body text-center">
+          <h5 class="card-title">🔑 Вход</h5>
+          <p class="card-text">Войдите, чтобы использовать сервис</p>
+          <a href="/auth/login" class="btn btn-primary">Войти</a>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
 {% endblock %}

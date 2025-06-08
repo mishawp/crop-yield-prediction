@@ -1,0 +1,154 @@
+{% block title %} Crop Yield Prediction | Prediction History {% endblock %} {%
+block head %}
+<style type="text/css">
+  .history-container {
+    margin: 2rem auto;
+    max-width: 1200px;
+  }
+  .history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+  }
+  .history-actions {
+    display: flex;
+    gap: 1rem;
+  }
+  .history-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+  .history-table th {
+    background-color: #2e7d32;
+    color: white;
+    padding: 1rem;
+    text-align: left;
+  }
+  .history-table td {
+    padding: 1rem;
+    border-bottom: 1px solid #dee2e6;
+    vertical-align: top;
+  }
+  .history-table tr:nth-child(even) {
+    background-color: #f8f9fa;
+  }
+  .history-table tr:hover {
+    background-color: #e8f5e9;
+  }
+  .status-badge {
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+  .status-completed {
+    background-color: #d4edda;
+    color: #155724;
+  }
+  .status-failed {
+    background-color: #f8d7da;
+    color: #721c24;
+  }
+  .status-processing {
+    background-color: #fff3cd;
+    color: #856404;
+  }
+  .btn-back {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    background-color: #f8f9fa;
+    border: 1px solid #2e7d32;
+    border-radius: 4px;
+    color: #2e7d32;
+    text-decoration: none;
+    transition: all 0.3s;
+  }
+  .btn-back:hover {
+    background-color: #2e7d32;
+    color: white;
+  }
+  .btn-predict {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    background-color: #2e7d32;
+    border: 1px solid #2e7d32;
+    border-radius: 4px;
+    color: white;
+    text-decoration: none;
+    transition: all 0.3s;
+  }
+  .btn-predict:hover {
+    background-color: #1b5e20;
+    border-color: #1b5e20;
+  }
+  .empty-state {
+    text-align: center;
+    padding: 2rem;
+    color: #6c757d;
+  }
+  .task-id {
+    font-family: monospace;
+    color: #6c757d;
+    font-size: 0.875rem;
+  }
+</style>
+{% endblock %} {% block content %}
+<div class="container">
+  <div class="history-header">
+    <h2>📋 Prediction History</h2>
+    <div class="history-actions">
+      <a href="/predict" class="btn-predict">🌾 New Prediction</a>
+      <a href="/" class="btn-back">← Back to Home</a>
+    </div>
+  </div>
+
+  {% if ml_tasks %}
+  <div class="table-responsive">
+    <table class="history-table">
+      <thead>
+        <tr>
+          <th>Task ID</th>
+          <th>Created At</th>
+          <th>Status</th>
+          <th>Input File</th>
+          <th>Result</th>
+          <th>Completed At</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for task in ml_tasks %}
+        <tr>
+          <td>
+            <span class="task-id">{{ task.id }}</span>
+          </td>
+          <td>{{ task.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+          <td>
+            <span class="status-badge status-{{ task.status }}">
+              {{ task.status }}
+            </span>
+          </td>
+          <td>{{ task.file }}</td>
+          <td>
+            {% if task.result %} {{ task.result }} {% else %} - {% endif %}
+          </td>
+          <td>
+            {% if task.updated_at %} {{ task.updated_at.strftime('%Y-%m-%d
+            %H:%M:%S') }} {% else %} - {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <h3>No prediction tasks yet</h3>
+    <p>Make your first prediction to see results here</p>
+    <a href="/predict" class="btn-predict">🌾 Make First Prediction</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
