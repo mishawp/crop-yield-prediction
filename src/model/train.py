@@ -1,5 +1,5 @@
 import os
-import subprocess
+import inspect
 import platform
 import psutil
 from datetime import datetime
@@ -8,24 +8,14 @@ import numpy as np
 from torch import nn
 from torch.utils.data import Dataset, DataLoader
 from sklearn.metrics import mean_squared_error, r2_score
-from src.data.dataset import (
-    TabularDataset,
-    ImagesDataset,
-    OneImageDataset,
-    MultiModalDataset,
-)
-from src.model.models import (
-    RNNRegressor,
-    MultiCNNGRU,
-    ResNetRegressor,
-    EfficientNetRegressor,
-    MultiModalModel,
-)
-from tqdm import tqdm
 from pathlib import Path
 import mlflow
 import mlflow.pytorch
+from mlflow.models import infer_signature
+from mlflow.models.signature import ModelSignature
+from mlflow.types.schema import Schema, TensorSpec
 from dotenv import load_dotenv
+from tqdm import tqdm
 
 PATH_PROCESSED = Path("data/processed")
 PATH_MODELS = Path("models")
@@ -74,6 +64,25 @@ class MLflowTracing:
         except Exception as e:
             print(f"Failed to get system info: {e}")
             return {}
+
+    @staticmethod
+    def get_model_hyperparams(model):
+        """Извлекает гиперпараметры модели через inspect."""
+        model_params = {}
+
+        # Получаем сигнатуру __init__ модели
+        init_signature = inspect.signature(model.__class__.__init__)
+
+        # Проходим по параметрам конструктора
+        for name, param in init_signature.parameters.items():
+            # Если параметр есть в атрибутах модели, берем его значение
+            if hasattr(model, name):
+                model_params[f"hyperparams.{name}"] = getattr(model, name)
+            # Если параметр не сохранен в модели, но имеет значение по умолчанию
+            elif param.default != inspect.Parameter.empty:
+                model_params[f"hyperparams.{name}"] = param.default
+
+        return model_params
 
 
 class ModelTrainer:
@@ -197,16 +206,17 @@ class ModelTrainer:
                 {
                     "system.device": self.device,
                     **MLflowTracing.get_system_info(),
+                    # Архитектура
+                    "model.type": self.model.__class__.__name__,
+                    "model.optimizer": self.optimizer.__class__.__name__,
+                    "model.loss_function": self.criterion.__class__.__name__,
                     # Гиперпараметры
                     "hyperparams.random_state": self.random_state,
                     "hyperparams.batch_size": self.batch_size,
                     "hyperparams.learning_rate": self.optimizer.param_groups[
                         0
                     ]["lr"],
-                    # Архитектура
-                    "model.type": self.model.__class__.__name__,
-                    "model.optimizer": self.optimizer.__class__.__name__,
-                    "model.loss_function": self.criterion.__class__.__name__,
+                    **MLflowTracing.get_model_hyperparams(self.model),
                     # Доп параметры модели
                     "model.num_params": sum(
                         p.numel() for p in self.model.parameters()
@@ -264,29 +274,25 @@ class ModelTrainer:
 
             # Load best model weights
             if best_model_weights is not None:
+                PATH_MODELS.mkdir(exist_ok=True)
                 print(
                     f"Best model at epoch {best_epoch + 1} with R²: {best_val_r2:.4f}"
                 )
                 self.model.load_state_dict(best_model_weights)
-                model_path = PATH_MODELS / (
-                    f"{self.model.__class__.__name__}_"
-                    f"{datetime.now().strftime('%Y%m%d_%H%M')}_"
-                    f"r2_{best_val_r2:.4f}.pth"
-                )
-                torch.save(
-                    self.model.state_dict(),
-                    model_path,
-                )
-                print(f"Model saved to {model_path}")
+                self.save_model(best_val_r2)
+                signature = self.get_signature()
+                # Сохраняем модель
                 mlflow.log_metrics(
                     {
                         "best_val_r2": best_val_r2,
                         "best_val_rmse": best_val_rmse,
                     }
                 )
-                mlflow.pytorch.log_model(self.model, "best_model")
-                if not PATH_MODELS.exists():
-                    PATH_MODELS.mkdir()
+                mlflow.pytorch.log_model(
+                    self.model,
+                    "best_model",
+                    signature=signature,
+                )
 
         return self.model, self.history
 
@@ -297,6 +303,32 @@ class ModelTrainer:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
         np.random.seed(seed)
+
+    def get_signature(self):
+        # Получаем батч данных
+        self.model.eval()
+        X, _ = next(iter(self.val_loader))
+
+        # Готовим данные для сигнатуры
+        with torch.no_grad():
+            predictions = self.model(X[:1].to(self.device)).cpu().numpy()
+
+        X_numpy = X[:1].cpu().numpy()
+
+        # Создаём сигнатуру
+        return infer_signature(X_numpy, predictions)
+
+    def save_model(self, best_val_r2):
+        model_path = PATH_MODELS / (
+            f"{self.model.__class__.__name__}_"
+            f"{datetime.now().strftime('%Y%m%d_%H%M')}_"
+            f"r2_{best_val_r2:.4f}.pth"
+        )
+        torch.save(
+            self.model.state_dict(),
+            model_path,
+        )
+        print(f"Model saved to {model_path}")
 
 
 class MultiModalTrainer(ModelTrainer):
@@ -360,207 +392,42 @@ class MultiModalTrainer(ModelTrainer):
 
         return r2, rmse
 
+    def get_signature(self):
+        # Получаем примеры данных для определения формы
+        (tabular_batch, image_batch), _ = next(iter(self.val_loader))
+        tabular_sample = tabular_batch[:1].to(self.device)
+        image_sample = image_batch[:1].to(self.device)
 
-class Runner:
-    @staticmethod
-    def run_multicnngru():
-        train_dataset = ImagesDataset(
-            PATH_PROCESSED / "X_train.csv",
-            PATH_PROCESSED / "y_train.csv",
-        )
-        test_dataset = ImagesDataset(
-            PATH_PROCESSED / "X_test.csv",
-            PATH_PROCESSED / "y_test.csv",
-        )
+        with torch.no_grad():
+            output_sample = (
+                self.model(tabular_sample, image_sample).cpu().numpy()
+            )
+        tabular_sample = tabular_sample.cpu().numpy()
+        image_sample = image_sample.cpu().numpy()
 
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-
-        model = MultiCNNGRU(
-            num_frames=train_dataset.X.shape[1],
-            hidden_size=512,
-            num_layers=1,
-        )
-
-        print(f"Training {model.__class__.__name__} model on {device}")
-
-        # Train model
-        trainer = ModelTrainer(
-            model=model,
-            train_dataset=train_dataset,
-            val_dataset=test_dataset,
-            batch_size=4,
-            learning_rate=0.001,
-            random_state=42,
-            device=device,
-            mlflow_uri="http://localhost:5000",
-            experiment_name="states6March-August",
+        input_schema = Schema(
+            [
+                TensorSpec(
+                    type=tabular_sample.dtype,
+                    shape=(-1, *tabular_sample.shape[1:]),
+                    name="tabular_input",
+                ),
+                TensorSpec(
+                    type=image_sample.dtype,
+                    shape=(-1, *image_sample.shape[1:]),
+                    name="image_input",
+                ),
+            ]
         )
 
-        trainer.run_training(
-            num_epochs=1000,
-            patience=10,
+        output_schema = Schema(
+            [
+                TensorSpec(
+                    type=output_sample.dtype,
+                    shape=(-1, *output_sample.shape[1:]),
+                    name="output",
+                )
+            ]
         )
 
-    @staticmethod
-    def run_rnn():
-        train_dataset = TabularDataset(
-            PATH_PROCESSED / "X_train.csv",
-            PATH_PROCESSED / "y_train.csv",
-        )
-        test_dataset = TabularDataset(
-            PATH_PROCESSED / "X_test.csv",
-            PATH_PROCESSED / "y_test.csv",
-        )
-
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-
-        # Initialize model
-        model = RNNRegressor(
-            rnn_type="GRU",
-            input_size=train_dataset.X.shape[2],
-            hidden_size=500,
-            num_layers=2,
-            dropout=0.3,
-            device=device,
-        )
-
-        print(f"Training {model.rnn_type} model on {device}")
-
-        # Train model
-        trainer = ModelTrainer(
-            model=model,
-            train_dataset=train_dataset,
-            val_dataset=test_dataset,
-            batch_size=16,
-            learning_rate=0.001,
-            random_state=42,
-            device=device,
-            mlflow_uri="http://localhost:5000",
-            experiment_name="states6March-August",
-        )
-
-        trainer.run_training(
-            num_epochs=1000,
-            patience=10,
-        )
-
-    @staticmethod
-    def run_resnetregressor():
-        train_dataset = OneImageDataset(
-            PATH_PROCESSED / "X_train.csv",
-            PATH_PROCESSED / "y_train.csv",
-        )
-        test_dataset = OneImageDataset(
-            PATH_PROCESSED / "X_test.csv",
-            PATH_PROCESSED / "y_test.csv",
-        )
-
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-
-        # Initialize model
-        model = ResNetRegressor()
-
-        print(f"Training {model.__class__.__name__} model on {device}")
-
-        # Train model
-        trainer = ModelTrainer(
-            model=model,
-            train_dataset=train_dataset,
-            val_dataset=test_dataset,
-            batch_size=32,
-            learning_rate=0.001,
-            random_state=42,
-            device=device,
-            mlflow_uri="http://localhost:5000",
-            experiment_name="States6OneImage",
-        )
-
-        trainer.run_training(
-            num_epochs=1000,
-            patience=10,
-        )
-
-    @staticmethod
-    def run_efficientnetregressor():
-        train_dataset = OneImageDataset(
-            PATH_PROCESSED / "X_train.csv",
-            PATH_PROCESSED / "y_train.csv",
-        )
-        test_dataset = OneImageDataset(
-            PATH_PROCESSED / "X_test.csv",
-            PATH_PROCESSED / "y_test.csv",
-        )
-
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-
-        # Initialize model
-        model = EfficientNetRegressor()
-
-        print(f"Training {model.__class__.__name__} model on {device}")
-
-        # Train model
-        trainer = ModelTrainer(
-            model=model,
-            train_dataset=train_dataset,
-            val_dataset=test_dataset,
-            batch_size=8,
-            learning_rate=0.001,
-            random_state=42,
-            device=device,
-            mlflow_uri="http://localhost:5000",
-            experiment_name="States6OneImage",
-        )
-
-        trainer.run_training(
-            num_epochs=1000,
-            patience=10,
-        )
-
-    @staticmethod
-    def run_multimodalmodel():
-        train_dataset = MultiModalDataset(
-            PATH_PROCESSED / "X_train.csv",
-            PATH_PROCESSED / "y_train.csv",
-        )
-        test_dataset = MultiModalDataset(
-            PATH_PROCESSED / "X_test.csv",
-            PATH_PROCESSED / "y_test.csv",
-        )
-
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-
-        model = MultiModalModel(
-            rnn_type="GRU",
-            tabular_input_size=train_dataset.X_tabular.shape[2],
-            tabular_hidden_size=200,
-            tabular_num_layers=2,
-            image_num_frames=train_dataset.X_image.shape[1],
-            image_hidden_size=512,
-            image_num_layers=1,
-            dropout=0.3,
-            device=device,
-        )
-
-        print(f"Training {model.__class__.__name__} model on {device}")
-
-        # Train model
-        trainer = MultiModalTrainer(
-            model=model,
-            train_dataset=train_dataset,
-            val_dataset=test_dataset,
-            batch_size=4,
-            learning_rate=0.001,
-            random_state=42,
-            device=device,
-            mlflow_uri="http://localhost:5000",
-            experiment_name="MultiModal",
-        )
-
-        trainer.run_training(
-            num_epochs=1000,
-            patience=10,
-        )
-
-
-if __name__ == "__main__":
-    Runner.run_multimodalmodel()
+        return ModelSignature(inputs=input_schema, outputs=output_schema)

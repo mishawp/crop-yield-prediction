@@ -1,10 +1,10 @@
-FROM pytorch/pytorch:2.7.0-cuda11.8-cudnn9-runtime
+FROM pytorch/pytorch:2.7.1-cuda12.8-cudnn9-runtime
 
 WORKDIR /app
 
 RUN pip install --upgrade pip
 
-RUN pip install torchvision==0.22.0
+RUN pip install torchvision==0.22.1
 
 COPY requirements.txt /app/
 

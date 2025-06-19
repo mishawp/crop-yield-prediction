@@ -25,14 +25,14 @@ stages:
       md5: c917e4997193cf3bd2afbcfb3880b7d3
       size: 12943
   train:
-    cmd: python -m src.model.train
+    cmd: python -m src.model.run
     deps:
     - path: data/processed
       hash: md5
       md5: d751713988987e9331980363e24189ce.dir
       size: 0
       nfiles: 0
-    - path: src/model/train.py
+    - path: src/model/run.py
       hash: md5
-      md5: ee0d9432981cb27cfbf40007bc444fd7
-      size: 19072
+      md5: 8b1aaf4485e2e6a6d01e52862c3b46db
+      size: 6082

@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres_mlflow:
     image: postgres:16-alpine
@@ -8,7 +6,7 @@ services:
       - POSTGRES_PASSWORD=${MLFLOW_POSTGRES_PASSWORD}
       - POSTGRES_DB=${MLFLOW_POSTGRES_DB}
     volumes:
-      - ./mlflow/postgres_data:/var/lib/postgresql/data
+      - postgres_mlflow_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
 
@@ -28,3 +26,6 @@ services:
       --port 5000
     ports:
       - "5000:5000"
+
+volumes:
+  postgres_mlflow_data:

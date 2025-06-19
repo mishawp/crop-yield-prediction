@@ -20,7 +20,7 @@ stages:
       - data/interim
 
   train:
-    cmd: python -m src.model.train
+    cmd: python -m src.model.run
     deps:
-      - src/model/train.py
+      - src/model/run.py
       - data/processed

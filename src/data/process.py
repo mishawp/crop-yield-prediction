@@ -65,28 +65,6 @@ def process() -> None:
     save(X_train, X_test, y_train, y_test)
 
 
-def filter_extreme_years(
-    df: pd.DataFrame, min_year: int, max_year: int
-) -> pd.DataFrame:
-    """
-    Удаление данных первого и последнего года.
-
-    Args:
-        df (pd.DataFrame): DataFrame с данными
-        min_year (int): Минимальный год в данных
-        max_year (int): Максимальный год в данных
-
-    Returns:
-        pd.DataFrame: Отфильтрованный DataFrame
-    """
-    return df[
-        ~(
-            ((df["year"] == min_year) & (df["month"] < 11))
-            | ((df["year"] == max_year) & (df["month"] > 10))
-        )
-    ]
-
-
 def merge_with_targets(X: pd.DataFrame, y: pd.DataFrame) -> pd.DataFrame:
     """
     Соединение признаков с таргетами.
@@ -246,8 +224,8 @@ def resize_and_save_images(paths_images: pd.Series):
             ),
         ]
     )
-    if not (tmp := (PATH_PROCESSED / "images")).exists():
-        tmp.mkdir(parents=True)
+    (PATH_PROCESSED / "images").mkdir(parents=True)
+
     for path in paths_images:
         image = np.load(PATH_INTERIM / path)
 
