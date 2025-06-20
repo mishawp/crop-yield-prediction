@@ -8,6 +8,7 @@ from src.data.dataset import (
 )
 from src.model.models import (
     RNNRegressor,
+    FlexibleResNetRegressor,
     MultiCNNGRU,
     ResNetRegressor,
     EfficientNetRegressor,
@@ -56,7 +57,7 @@ class Runner:
 
         trainer.run_training(
             num_epochs=1000,
-            patience=10,
+            patience=20,
         )
 
     @staticmethod
@@ -139,6 +140,42 @@ class Runner:
         )
 
     @staticmethod
+    def run_FlexibleResNetRegressor():
+        train_dataset = OneImageDataset(
+            PATH_PROCESSED / "X_train.csv",
+            PATH_PROCESSED / "y_train.csv",
+        )
+        test_dataset = OneImageDataset(
+            PATH_PROCESSED / "X_test.csv",
+            PATH_PROCESSED / "y_test.csv",
+        )
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        # Initialize model
+        model = ResNetRegressor()
+
+        print(f"Training {model.__class__.__name__} model on {device}")
+
+        # Train model
+        trainer = ModelTrainer(
+            model=model,
+            train_dataset=train_dataset,
+            val_dataset=test_dataset,
+            batch_size=64,
+            learning_rate=0.001,
+            random_state=42,
+            device=device,
+            mlflow_uri="http://localhost:5000",
+            experiment_name="ResNetRegressor",
+        )
+
+        trainer.run_training(
+            num_epochs=1,
+            patience=1,
+        )
+
+    @staticmethod
     def run_efficientnetregressor():
         train_dataset = OneImageDataset(
             PATH_PROCESSED / "X_train.csv",
@@ -176,6 +213,12 @@ class Runner:
 
     @staticmethod
     def run_multimodalmodel():
+        # shapes
+        # tabular_data.shape = (months * split, days, feature)
+        # (6*2, 15, 13)
+        # image_data.shape = (months * split, C, H, W)
+        # (6*2, 3, 224, 224)
+        # target.shape = (1,)
         train_dataset = MultiModalDataset(
             PATH_PROCESSED / "X_train.csv",
             PATH_PROCESSED / "y_train.csv",
@@ -188,14 +231,15 @@ class Runner:
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
         model = MultiModalModel(
-            rnn_type="GRU",
-            tabular_input_size=train_dataset.X_tabular.shape[2],
-            tabular_hidden_size=200,
-            tabular_num_layers=2,
-            image_num_frames=train_dataset.X_image.shape[1],
-            image_hidden_size=512,
-            image_num_layers=1,
-            dropout=0.3,
+            num_frames=train_dataset.X_image.shape[1],
+            rnns_input_size=train_dataset.X_tabular.shape[3],
+            rnns_hidden_size=train_dataset.X_tabular.shape[3] * 10,
+            rnns_num_layers=2,
+            rnns_dropout=0.3,
+            rnns_num_last_frames=2,
+            main_hidden_size=None,
+            main_num_layers=2,
+            main_dropout=0.3,
             device=device,
         )
 
@@ -206,7 +250,7 @@ class Runner:
             model=model,
             train_dataset=train_dataset,
             val_dataset=test_dataset,
-            batch_size=32,
+            batch_size=16,
             learning_rate=0.001,
             random_state=42,
             device=device,
@@ -215,10 +259,10 @@ class Runner:
         )
 
         trainer.run_training(
-            num_epochs=1,
-            patience=1,
+            num_epochs=1000,
+            patience=,
         )
 
 
 if __name__ == "__main__":
-    Runner.run_multimodalmodel()
+    Runner.run_resnetregressor()

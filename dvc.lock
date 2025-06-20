@@ -34,5 +34,5 @@ stages:
       nfiles: 0
     - path: src/model/run.py
       hash: md5
-      md5: 8b1aaf4485e2e6a6d01e52862c3b46db
-      size: 6082
+      md5: 71e89a03cb3593165701ddc5f7601a20
+      size: 6362

@@ -78,9 +78,6 @@ class MLflowTracing:
             # Если параметр есть в атрибутах модели, берем его значение
             if hasattr(model, name):
                 model_params[f"hyperparams.{name}"] = getattr(model, name)
-            # Если параметр не сохранен в модели, но имеет значение по умолчанию
-            elif param.default != inspect.Parameter.empty:
-                model_params[f"hyperparams.{name}"] = param.default
 
         return model_params
 

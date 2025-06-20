@@ -1,10 +1,11 @@
 import torch
 import numpy as np
 import pandas as pd
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 from pathlib import Path
 
 PATH_PROCESSED = Path("data/processed")
+PATH_INTERIM = Path("data/interim")
 
 
 class TabularDataset(Dataset):
@@ -108,11 +109,25 @@ class MultiModalDataset(Dataset):
         X_image_groups = [None] * self.n_samples
         y_groups = [None] * self.n_samples
 
+        months = list(range(3, 9))
         for i, ((year, fips), group) in enumerate(grouped):
             # Табличные данные
-            X_tabular = group.drop(
-                ["month", "day", "yield_bu_per_acre", "images"], axis=1
-            ).values
+            X_tabular = []
+            for month in months:
+                # Получаем дни для текущего месяца
+                days = (
+                    group[group["month"] == month]
+                    .drop(
+                        ["month", "day", "yield_bu_per_acre", "images"], axis=1
+                    )
+                    .values
+                )
+
+                # Добавляем части в результат
+                X_tabular.append(days[:15])
+                X_tabular.append(days[15:30])
+
+            X_tabular = np.array(X_tabular)
 
             # Данные изображений
             X_image = group["images"].dropna().values
@@ -144,6 +159,12 @@ class MultiModalDataset(Dataset):
         # Целевая переменная
         target = torch.tensor(self.y[idx]).float()
 
+        # shapes
+        # tabular_data.shape = (months * split, days, feature)
+        # (6*2, 15, 13)
+        # image_data.shape = (months * split, C, H, W)
+        # (6*2, 3, 224, 224)
+        # target.shape = (1,)
         return (tabular_data, image_data), target
 
 
@@ -170,3 +191,39 @@ class OneImageDataset(Dataset):
             torch.tensor(image).float(),
             torch.tensor(self.y[idx]).float(),
         )
+
+
+class FlexibleResNetRegressorDataset(Dataset):
+    def __init__(self, path_X: Path, path_y: Path):
+        X = pd.read_csv(
+            path_X, usecols=["year", "fips", "month", "day", "images"]
+        )
+        y = pd.read_csv(path_y)
+
+        data = pd.concat([X, y], axis=1).dropna()
+        data = data[(data["month"] == 8) & (data["day"] == 15)]
+        self.X = data["images"].values
+        self.y = data["yield_bu_per_acre"].values
+        self.n_samples = self.X.shape[0]
+
+    def __len__(self):
+        return self.n_samples
+
+    def __getitem__(self, idx):
+        path_image = PATH_INTERIM / self.X[idx]
+        image = np.load(path_image)
+        return (
+            torch.tensor(image).float(),
+            torch.tensor(self.y[idx]).float(),
+        )
+
+
+if __name__ == "__main__":
+    dataset = MultiModalDataset(
+        PATH_PROCESSED / "X_train.csv", PATH_PROCESSED / "y_train.csv"
+    )
+
+    loader = DataLoader(dataset, batch_size=32, shuffle=True)
+
+    for (tabular_batch, image_batch), y_batch in loader:
+        ...

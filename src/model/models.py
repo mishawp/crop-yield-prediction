@@ -1,7 +1,8 @@
 import torch
 from torch import nn
-from typing import Literal
+import torch.nn.functional as F
 from torchvision.models import resnet18, efficientnet_b0
+from typing import Literal
 
 
 class RNNRegressor(nn.Module):
@@ -106,7 +107,7 @@ class MultiCNNGRU(nn.Module):
 
         # RNN часть
         self.rnn = nn.GRU(
-            input_size=512,  # Размер фичей ResNet18
+            input_size=512,
             hidden_size=hidden_size,
             num_layers=num_layers,
             batch_first=True,
@@ -141,49 +142,87 @@ class MultiCNNGRU(nn.Module):
 class MultiModalModel(nn.Module):
     def __init__(
         self,
-        rnn_type: Literal["RNN", "LSTM", "GRU"],
-        tabular_input_size: int,
-        image_num_frames: int = 12,
-        tabular_hidden_size: int = 200,
-        image_hidden_size: int = 128,
-        tabular_num_layers: int = 2,
-        image_num_layers: int = 1,
-        dropout: float = 0.3,
-        device="cuda",
+        num_frames: int = 12,
+        rnns_input_size: int = None,
+        rnns_hidden_size: int = 64,
+        rnns_num_layers: int = 2,
+        rnns_dropout: int = 0.3,
+        rnns_num_last_frames: int = 7,
+        main_hidden_size: int = 1024,
+        main_num_layers: int = 1,
+        main_dropout: int = 0.3,
+        device: str = "cuda",
     ):
         super(MultiModalModel, self).__init__()
         self.device = device
 
-        # Модель для табличных данных
-        self.tabular_model = RNNRegressor(
-            rnn_type=rnn_type,
-            input_size=tabular_input_size,
-            hidden_size=tabular_hidden_size,
-            num_layers=tabular_num_layers,
-            dropout=dropout,
-            device=device,
+        self.num_frames = num_frames
+
+        self.rnns_num_last_frames = rnns_num_last_frames
+        main_input_size = 512 + rnns_hidden_size * rnns_num_last_frames
+
+        main_hidden_size = main_input_size * 2
+
+        # Создаем отдельную CNN для каждого фрейма
+        self.cnns = nn.ModuleList(
+            [
+                nn.Sequential(
+                    *list(resnet18().children())[:-1],
+                    nn.AdaptiveAvgPool2d((1, 1)),
+                    nn.Flatten(),
+                )
+                for _ in range(num_frames)
+            ]
         )
 
-        # Модель для изображений
-        self.image_model = MultiCNNGRU(
-            num_frames=image_num_frames,
-            hidden_size=image_hidden_size,
-            num_layers=image_num_layers,
+        self.rnns = nn.ModuleList(
+            [
+                nn.GRU(
+                    input_size=rnns_input_size,
+                    hidden_size=rnns_hidden_size,
+                    num_layers=rnns_num_layers,
+                    dropout=rnns_dropout,
+                    batch_first=True,
+                )
+                for _ in range(num_frames)
+            ]
         )
 
-        # Объединяющий слой
-        self.combine_fc = nn.Linear(2, 1)  # Объединяем 2 выхода в 1
+        self.main_rnn = nn.GRU(
+            input_size=main_input_size,
+            hidden_size=main_hidden_size,
+            num_layers=main_num_layers,
+            dropout=main_dropout,
+            batch_first=True,
+        )
+
+        self.fc = nn.Linear(main_hidden_size, 1)
 
     def forward(self, tabular_data, image_data):
-        # Обработка табличных данных
-        tabular_out = self.tabular_model(tabular_data)
+        # x.shape = [batch_size, timesteps=12, C, H, W]
 
-        # Обработка изображений
-        image_out = self.image_model(image_data)
+        # Обрабатываем каждый фрейм своей CNN
+        outputs = []
+        for i in range(self.num_frames):
+            frame_image = image_data[:, i, :, :, :]  # Берем i-й фрейм
+            cnn_out = self.cnns[i](frame_image)  # Обрабатываем i-й CNN
 
-        # Объединение результатов
-        combined = torch.cat([tabular_out, image_out], dim=1)
-        output = self.combine_fc(combined)
+            frame_tabular = tabular_data[:, i, :, :]  # Берем i-й фрейм
+
+            rnn_out, _ = self.rnns[i](frame_tabular)
+            rnn_out = rnn_out[:, -self.rnns_num_last_frames :, :]
+
+            rnn_out = rnn_out.reshape(rnn_out.size(0), -1)
+
+            frame_out = torch.cat((cnn_out, rnn_out), dim=1)
+
+            outputs.append(frame_out)
+
+        r_in = torch.stack(outputs, dim=1)
+
+        r_out, _ = self.main_rnn(r_in)
+
+        output = self.fc(r_out[:, -1, :])
 
         return output
 
@@ -206,6 +245,31 @@ class ResNetRegressor(nn.Module):
         # x.shape = [batch_size, C, H, W] - одно изображение
         features = self.resnet(x)
         output = self.fc(features)
+        return output
+
+
+class FlexibleResNetRegressor(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        # Базовый ResNet без последнего слоя и без глобального пулинга
+        self.resnet = nn.Sequential(*list(resnet18().children())[:-2])
+
+        # Адаптивный пулинг вместо фиксированного
+        self.adaptive_pool = nn.AdaptiveAvgPool2d((1, 1))
+
+        # Регрессионная головка
+        self.fc = nn.Linear(512, 1)  # 512 - размер фичей ResNet18
+
+    def forward(self, x):
+        # x.shape = [batch_size, C, H, W] - произвольный размер
+        features = self.resnet(x)
+
+        # Применяем адаптивный пулинг к картам признаков любого размера
+        pooled = self.adaptive_pool(features)
+
+        flattened = pooled.view(pooled.size(0), -1)
+        output = self.fc(flattened)
         return output
 
 
