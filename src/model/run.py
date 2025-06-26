@@ -11,7 +11,8 @@ from src.model.models import (
     FlexibleResNetRegressor,
     MultiCNNGRU,
     ResNetRegressor,
-    EfficientNetRegressor,
+    EfficientNetB0Regressor,
+    EfficientNetB4Regressor,
     MultiModalModel,
 )
 from src.model.train import ModelTrainer, MultiModalTrainer
@@ -22,7 +23,7 @@ PATH_MODELS = Path("models")
 
 class Runner:
     @staticmethod
-    def run_multicnngru():
+    def run_MultiCNNGRU():
         train_dataset = ImagesDataset(
             PATH_PROCESSED / "X_train.csv",
             PATH_PROCESSED / "y_train.csv",
@@ -52,16 +53,16 @@ class Runner:
             random_state=42,
             device=device,
             mlflow_uri="http://localhost:5000",
-            experiment_name="states6March-August",
+            experiment_name="MultiCNNGRU",
         )
 
         trainer.run_training(
             num_epochs=1000,
-            patience=20,
+            patience=15,
         )
 
     @staticmethod
-    def run_rnn():
+    def run_RNNRegressor():
         train_dataset = TabularDataset(
             PATH_PROCESSED / "X_train.csv",
             PATH_PROCESSED / "y_train.csv",
@@ -104,7 +105,7 @@ class Runner:
         )
 
     @staticmethod
-    def run_resnetregressor():
+    def run_ResNetRegressor():
         train_dataset = OneImageDataset(
             PATH_PROCESSED / "X_train.csv",
             PATH_PROCESSED / "y_train.csv",
@@ -153,7 +154,7 @@ class Runner:
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
         # Initialize model
-        model = ResNetRegressor()
+        model = FlexibleResNetRegressor()
 
         print(f"Training {model.__class__.__name__} model on {device}")
 
@@ -162,21 +163,21 @@ class Runner:
             model=model,
             train_dataset=train_dataset,
             val_dataset=test_dataset,
-            batch_size=64,
+            batch_size=16,
             learning_rate=0.001,
             random_state=42,
             device=device,
             mlflow_uri="http://localhost:5000",
-            experiment_name="ResNetRegressor",
+            experiment_name="FlexibleResNetRegressor",
         )
 
         trainer.run_training(
-            num_epochs=1,
-            patience=1,
+            num_epochs=1000,
+            patience=15,
         )
 
     @staticmethod
-    def run_efficientnetregressor():
+    def run_EfficientNetB0Regressor():
         train_dataset = OneImageDataset(
             PATH_PROCESSED / "X_train.csv",
             PATH_PROCESSED / "y_train.csv",
@@ -189,7 +190,7 @@ class Runner:
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
         # Initialize model
-        model = EfficientNetRegressor()
+        model = EfficientNetB0Regressor()
 
         print(f"Training {model.__class__.__name__} model on {device}")
 
@@ -203,22 +204,52 @@ class Runner:
             random_state=42,
             device=device,
             mlflow_uri="http://localhost:5000",
-            experiment_name="States6OneImage",
+            experiment_name="FlexibleResNetRegressor",
         )
 
         trainer.run_training(
             num_epochs=1000,
-            patience=10,
+            patience=15,
+        )
+
+    @staticmethod
+    def run_EfficientNetB4Regressor():
+        train_dataset = OneImageDataset(
+            PATH_PROCESSED / "X_train.csv",
+            PATH_PROCESSED / "y_train.csv",
+        )
+        test_dataset = OneImageDataset(
+            PATH_PROCESSED / "X_test.csv",
+            PATH_PROCESSED / "y_test.csv",
+        )
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        # Initialize model
+        model = EfficientNetB4Regressor()
+
+        print(f"Training {model.__class__.__name__} model on {device}")
+
+        # Train model
+        trainer = ModelTrainer(
+            model=model,
+            train_dataset=train_dataset,
+            val_dataset=test_dataset,
+            batch_size=4,
+            learning_rate=0.001,
+            random_state=42,
+            device=device,
+            mlflow_uri="http://localhost:5000",
+            experiment_name="EfficientNetB4Regressor",
+        )
+
+        trainer.run_training(
+            num_epochs=1000,
+            patience=15,
         )
 
     @staticmethod
     def run_multimodalmodel():
-        # shapes
-        # tabular_data.shape = (months * split, days, feature)
-        # (6*2, 15, 13)
-        # image_data.shape = (months * split, C, H, W)
-        # (6*2, 3, 224, 224)
-        # target.shape = (1,)
         train_dataset = MultiModalDataset(
             PATH_PROCESSED / "X_train.csv",
             PATH_PROCESSED / "y_train.csv",
@@ -260,9 +291,9 @@ class Runner:
 
         trainer.run_training(
             num_epochs=1000,
-            patience=,
+            patience=20,
         )
 
 
 if __name__ == "__main__":
-    Runner.run_resnetregressor()
+    Runner.run_MultiCNNGRU()

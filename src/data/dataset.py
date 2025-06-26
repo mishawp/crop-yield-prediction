@@ -25,13 +25,12 @@ class TabularDataset(Dataset):
 
         for i, ((year, fips), group) in enumerate(grouped):
             # Отбрасываем ненужные столбцы для X
-            # images пока не используем
+            # images не используем
             X_values = group.drop(
                 ["month", "day", "yield_bu_per_acre", "images"], axis=1
             ).values
 
             # для пары fips, year только одно значение yield_bu_per_acre
-            # условие проверяется в data/process.ipynb
             y_values = group["yield_bu_per_acre"].iloc[0]
 
             images_values = group["images"].values
@@ -39,7 +38,6 @@ class TabularDataset(Dataset):
             X_groups[i] = X_values
             y_groups[i] = y_values
 
-        # Преобразуем списки в numpy массивы
         self.X = np.array(X_groups)  # 3D array: (sample, timestep, features)
         self.y = np.array(y_groups)  # 1D array: (target value per sample)
 
@@ -55,10 +53,13 @@ class TabularDataset(Dataset):
 
 class ImagesDataset(Dataset):
     def __init__(self, path_X: Path, path_y: Path):
-        X = pd.read_csv(path_X, usecols=["year", "fips", "images"])
+        X = pd.read_csv(path_X, usecols=["year", "month", "fips", "images"])
         y = pd.read_csv(path_y)
 
         data = pd.concat([X, y], axis=1).dropna()
+        # оставляем июнь, июль, август
+        data = data[data["month"] > 5]
+        data.drop("month", axis=1, inplace=True)
 
         # Группируем по year и fips, сохраняя группы как списки записей
         grouped = data.groupby(["year", "fips"])
@@ -186,31 +187,6 @@ class OneImageDataset(Dataset):
 
     def __getitem__(self, idx):
         path_image = PATH_PROCESSED / self.X[idx]
-        image = np.load(path_image)
-        return (
-            torch.tensor(image).float(),
-            torch.tensor(self.y[idx]).float(),
-        )
-
-
-class FlexibleResNetRegressorDataset(Dataset):
-    def __init__(self, path_X: Path, path_y: Path):
-        X = pd.read_csv(
-            path_X, usecols=["year", "fips", "month", "day", "images"]
-        )
-        y = pd.read_csv(path_y)
-
-        data = pd.concat([X, y], axis=1).dropna()
-        data = data[(data["month"] == 8) & (data["day"] == 15)]
-        self.X = data["images"].values
-        self.y = data["yield_bu_per_acre"].values
-        self.n_samples = self.X.shape[0]
-
-    def __len__(self):
-        return self.n_samples
-
-    def __getitem__(self, idx):
-        path_image = PATH_INTERIM / self.X[idx]
         image = np.load(path_image)
         return (
             torch.tensor(image).float(),

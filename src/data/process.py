@@ -216,17 +216,19 @@ def resize_and_save_images(paths_images: pd.Series):
     preprocess = transforms.Compose(
         [
             transforms.ToPILImage(),
-            transforms.Resize(256),  # изменение размера
-            transforms.CenterCrop(224),  # центр-кроп до 224x224
-            transforms.ToTensor(),  # преобразование в тензор [0,1]
-            transforms.Normalize(  # нормализация по ImageNet
-                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+            transforms.Resize(896),
+            transforms.CenterCrop(896),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=[0.25, 0.35, 0.25],  # Усиленный зелёный (G) канал
+                std=[0.2, 0.2, 0.2],  # Меньшее std для большей контрастности
             ),
         ]
     )
+
     (PATH_PROCESSED / "images").mkdir(parents=True)
 
-    for path in paths_images:
+    for path in tqdm(paths_images, desc="Processing images"):
         image = np.load(PATH_INTERIM / path)
 
         # Конвертируем в тензор и ресайзим

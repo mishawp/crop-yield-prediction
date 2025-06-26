@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-from torchvision.models import resnet18, efficientnet_b0
+from torchvision.models import resnet18, efficientnet_b0, efficientnet_b4
 from typing import Literal
 
 
@@ -97,8 +97,7 @@ class MultiCNNGRU(nn.Module):
         self.cnns = nn.ModuleList(
             [
                 nn.Sequential(
-                    *list(resnet18().children())[:-1],
-                    nn.AdaptiveAvgPool2d((1, 1)),
+                    *list(FlexibleResNetRegressor().children())[:-1],
                     nn.Flatten(),
                 )
                 for _ in range(num_frames)
@@ -117,8 +116,7 @@ class MultiCNNGRU(nn.Module):
         self.fc = nn.Linear(hidden_size, 1)
 
     def forward(self, x):
-        # x.shape = [batch_size, timesteps=12, C, H, W]
-        batch_size = x.size(0)
+        # x.shape = [batch_size, timesteps, C, H, W]
 
         # Обрабатываем каждый фрейм своей CNN
         cnn_outputs = []
@@ -273,7 +271,7 @@ class FlexibleResNetRegressor(nn.Module):
         return output
 
 
-class EfficientNetRegressor(nn.Module):
+class EfficientNetB0Regressor(nn.Module):
     def __init__(self):
         super().__init__()
 
@@ -297,4 +295,31 @@ class EfficientNetRegressor(nn.Module):
         pooled = self.avgpool(features)  # [batch_size, 1280, 1, 1]
         flattened = self.flatten(pooled)  # [batch_size, 1280]
         output = self.fc(flattened)  # [batch_size, 1]
+        return output
+
+
+class EfficientNetB4Regressor(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        effnet = efficientnet_b4()
+
+        # Удаляем последние слои (классификатор и пулинг)
+        self.backbone = nn.Sequential(*list(effnet.children())[:-2])
+
+        # Для EfficientNet-B4 размер фичей перед последним пулингом - 1792
+        self.adaptive_pool = nn.AdaptiveAvgPool2d((1, 1))
+
+        # Регрессионная головка
+        self.fc = nn.Linear(1792, 1)
+
+    def forward(self, x):
+        # x.shape = [batch_size, 3, H, W]
+        features = self.backbone(x)
+
+        # Применяем адаптивный пулинг
+        pooled = self.adaptive_pool(features)
+
+        flattened = pooled.view(pooled.size(0), -1)
+        output = self.fc(flattened)
         return output
