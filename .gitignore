@@ -172,3 +172,29 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+/obsidian/.obsidian/
+/obsidian/Articles/
+
+/resources/USA-map/
+
+# draft
+draft.py
+draft.ipynb
+rabish/
+
+# data
+/data/**
+!/data/*.dvc
+postgres_data
+mlruns
+
+# dvc pipelines
+*nbconvert.ipynb
+
+# models
+/models
+/checkpoints
+
+# app
+app/images/
