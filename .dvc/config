@@ -1,0 +1,5 @@
+[core]
+    remote = yandex-cloud
+['remote "yandex-cloud"']
+    url = s3://data-cyp
+    endpointurl = https://storage.yandexcloud.net

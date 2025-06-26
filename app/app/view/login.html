@@ -1,0 +1,146 @@
+{% block title %} Прогноз Урожайности | Авторизация {% endblock %} {% block head
+%}
+<style type="text/css">
+  .auth-container {
+    max-width: 500px;
+    margin: 2rem auto;
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    background: white;
+  }
+  .auth-tabs {
+    display: flex;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid #dee2e6;
+  }
+  .auth-tab {
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    border: none;
+    background: none;
+    font-weight: 500;
+  }
+  .auth-tab.active {
+    color: #2e7d32;
+    border-bottom: 2px solid #2e7d32;
+  }
+  .form-group {
+    margin-bottom: 1.5rem;
+  }
+  .form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+  }
+  .form-control {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+  }
+  .btn-auth {
+    width: 100%;
+    padding: 0.5rem;
+    border: none;
+    border-radius: 4px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .btn-login {
+    background-color: #2e7d32;
+    color: white;
+  }
+  .btn-signup {
+    background-color: #f8f9fa;
+    color: #212529;
+    border: 1px solid #ced4da;
+  }
+  .error-message {
+    color: #dc3545;
+    margin-top: 0.5rem;
+    font-size: 0.875rem;
+  }
+</style>
+{% endblock %} {% block content %}
+<div class="container">
+  <div class="auth-container">
+    <div class="auth-tabs">
+      <button class="auth-tab active" onclick="showTab('login')">Login</button>
+      <button class="auth-tab" onclick="showTab('signup')">Signup</button>
+    </div>
+
+    <form id="loginForm" action="/auth/login" method="post">
+      <div class="form-group">
+        <label for="loginEmail">Email</label>
+        <input
+          type="email"
+          class="form-control"
+          id="loginEmail"
+          name="username"
+          value="{{ username }}"
+          required
+        />
+      </div>
+      <div class="form-group">
+        <label for="loginPassword">Password</label>
+        <input
+          type="password"
+          class="form-control"
+          id="loginPassword"
+          name="password"
+          required
+        />
+      </div>
+      <button type="submit" class="btn-auth btn-login">Login</button>
+    </form>
+
+    <form
+      id="signupForm"
+      action="/auth/signup"
+      method="post"
+      style="display: none"
+    >
+      <div class="form-group">
+        <label for="signupEmail">Email</label>
+        <input
+          type="email"
+          class="form-control"
+          id="signupEmail"
+          name="username"
+          required
+        />
+      </div>
+      <div class="form-group">
+        <label for="signupPassword">Password</label>
+        <input
+          type="password"
+          class="form-control"
+          id="signupPassword"
+          name="password"
+          required
+        />
+      </div>
+      <button type="submit" class="btn-auth btn-signup">SignUp</button>
+    </form>
+  </div>
+</div>
+
+<script>
+  function showTab(tabName) {
+    // Update tabs
+    document.querySelectorAll(".auth-tab").forEach((tab) => {
+      tab.classList.toggle(
+        "active",
+        tab.textContent.toLowerCase().includes(tabName)
+      );
+    });
+
+    // Update forms visibility
+    document.getElementById("loginForm").style.display =
+      tabName === "login" ? "block" : "none";
+    document.getElementById("signupForm").style.display =
+      tabName === "signup" ? "block" : "none";
+  }
+</script>
+{% endblock %}
